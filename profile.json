@@ -1,0 +1,69 @@
+{
+  "name": "Boaz",
+  "title": "Full Stack Developer",
+  "skills": {
+    "primary": [
+      ".NET",
+      "C#",
+      "TypeScript",
+      "Node.js",
+      "React"
+    ],
+    "secondary": [
+      "Python",
+      "SQL",
+      "REST API",
+      "Docker",
+      "Azure",
+      "Git"
+    ],
+    "interested_in": [
+      "AI",
+      "LLM",
+      "Claude",
+      "Automation",
+      "Agents"
+    ]
+  },
+  "experience_years": 5,
+  "location": {
+    "preferred": [
+      "Tel Aviv",
+      "תל אביב",
+      "Herzliya",
+      "הרצליה",
+      "Ramat Gan",
+      "רמת גן",
+      "Netanya",
+      "נתניה",
+      "Central",
+      "Israel"
+    ],
+    "remote_ok": true
+  },
+  "job_types": [
+    "Full-time"
+  ],
+  "keywords_boost": [
+    "backend",
+    "fullstack",
+    "full stack",
+    "full-stack",
+    "senior",
+    "AI",
+    "automation",
+    "agent",
+    "LLM",
+    "platform",
+    "architect"
+  ],
+  "keywords_exclude": [
+    "intern",
+    "junior",
+    "student",
+    "part-time",
+    "director",
+    "VP"
+  ],
+  "min_match_score": 30
+}

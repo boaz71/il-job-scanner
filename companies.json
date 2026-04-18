@@ -1,0 +1,24 @@
+{
+  "companies": [
+    { "name": "Taboola",     "ats": "greenhouse", "token": "taboola",     "hq": "תל אביב",  "sector": "Ad-Tech" },
+    { "name": "Riskified",   "ats": "greenhouse", "token": "riskified",   "hq": "תל אביב",  "sector": "Fintech" },
+    { "name": "AppsFlyer",   "ats": "greenhouse", "token": "appsflyer",   "hq": "הרצליה",   "sector": "MarTech" },
+    { "name": "Lightricks",  "ats": "greenhouse", "token": "lightricks",  "hq": "ירושלים",  "sector": "Creative Tech" },
+    { "name": "Forter",      "ats": "greenhouse", "token": "forter",      "hq": "תל אביב",  "sector": "Fintech" },
+    { "name": "SimilarWeb",  "ats": "greenhouse", "token": "similarweb",  "hq": "תל אביב",  "sector": "Analytics" },
+    { "name": "Cybereason",  "ats": "greenhouse", "token": "cybereason",  "hq": "תל אביב",  "sector": "Security" },
+    { "name": "Pagaya",      "ats": "greenhouse", "token": "pagaya",      "hq": "תל אביב",  "sector": "Fintech" },
+    { "name": "HoneyBook",   "ats": "greenhouse", "token": "honeybook",   "hq": "תל אביב",  "sector": "SaaS" },
+    { "name": "Payoneer",    "ats": "greenhouse", "token": "payoneer",    "hq": "פתח תקווה", "sector": "Fintech" },
+    { "name": "Melio",       "ats": "greenhouse", "token": "meliopayments", "hq": "תל אביב", "sector": "Fintech" },
+    { "name": "Teleport",    "ats": "lever",      "token": "teleport",    "hq": "Global",    "sector": "DevOps/Security" },
+    { "name": "Snowflake",   "ats": "ashby",      "token": "Snowflake",   "hq": "Global",    "sector": "Data" },
+
+    { "name": "🌍 Remote — Software Dev",  "ats": "remotive", "token": "software-dev", "hq": "Worldwide", "sector": "Aggregator" },
+    { "name": "🌍 Remote — DevOps/SysAdmin", "ats": "remotive", "token": "devops-sysadmin", "hq": "Worldwide", "sector": "Aggregator" },
+    { "name": "🌍 Remote — Data",          "ats": "remotive", "token": "data", "hq": "Worldwide", "sector": "Aggregator" },
+    { "name": "🌍 Remote — Product",       "ats": "remotive", "token": "product", "hq": "Worldwide", "sector": "Aggregator" },
+
+    { "name": "🌎 RemoteOK — All Tech", "ats": "remoteok", "token": "all", "hq": "Worldwide", "sector": "Aggregator" }
+  ]
+}

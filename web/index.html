@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>IL Job Scanner</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">🇮🇱</span>
+    <span class="brand-name">IL Job Scanner</span>
+  </div>
+  <nav class="tabs">
+    <button class="tab active" data-tab="profile">👤 פרופיל</button>
+    <button class="tab" data-tab="dashboard">📊 דאשבורד</button>
+    <span class="tab-divider"></span>
+    <button class="tab" data-tab="jobs">💼 משרות</button>
+    <button class="tab" data-tab="tracker">🎯 מעקב</button>
+    <span class="tab-divider"></span>
+    <button class="tab" data-tab="companies">🏢 חברות</button>
+    <button class="tab" data-tab="ai">🤖 AI</button>
+    <button class="tab" data-tab="portfolio">🚀 פרויקטים</button>
+    <button class="tab" data-tab="leetcode">🧩 LeetCode</button>
+    <span class="tab-divider"></span>
+    <button class="tab" data-tab="history">🗄️ היסטוריה</button>
+    <button class="tab" data-tab="automation">⚙️ הגדרות</button>
+  </nav>
+  <div class="profile-switcher">
+    <select id="profile-select"></select>
+    <button id="manage-profiles-btn" title="ניהול פרופילים">⚙️</button>
+  </div>
+</header>
+
+<!-- ═══════════════ JOBS TAB ═══════════════ -->
+<section class="page" id="page-jobs">
+  <div class="page-head">
+    <div class="page-title">
+      <h2>💼 משרות מותאמות</h2>
+      <span class="muted" id="jobs-stats">טוען...</span>
+    </div>
+    <div class="page-actions">
+      <button class="btn primary" id="refresh-jobs-btn">🔄 רענן משרות</button>
+    </div>
+  </div>
+
+  <div class="filters">
+    <input id="q" placeholder="🔍 חיפוש בכותרת / חברה / תיאור..." />
+    <select id="grade">
+      <option value="">כל הציונים</option>
+      <option value="A">A בלבד</option>
+      <option value="AB">A-B</option>
+      <option value="ABC">A-C</option>
+    </select>
+    <select id="source">
+      <option value="">כל המקורות</option>
+      <option value="il">🇮🇱 ישראל בלבד</option>
+      <option value="remote">🌍 רימוט גלובלי</option>
+    </select>
+    <select id="special">
+      <option value="">הכל</option>
+      <option value="new">🆕 חדשות בלבד</option>
+      <option value="restored">♻️ משוחזרות בלבד</option>
+    </select>
+    <select id="company"><option value="">כל החברות</option></select>
+    <select id="location"><option value="">כל המיקומים</option></select>
+    <select id="sort">
+      <option value="score">ציון ↓</option>
+      <option value="date">תאריך ↓</option>
+      <option value="title">שם ↑</option>
+    </select>
+  </div>
+
+  <div id="jobs-list"></div>
+</section>
+
+<!-- ═══════════════ TRACKER TAB ═══════════════ -->
+<section class="page" id="page-tracker">
+  <div class="page-head">
+    <div class="page-title">
+      <h2>🎯 מעקב הגשות</h2>
+      <span class="muted" id="tracker-stats"></span>
+    </div>
+  </div>
+  <div class="kanban" id="kanban">
+    <div class="kanban-col" data-status="interested">
+      <div class="kanban-head"><span>👀 מתעניין</span><span class="kanban-count" id="cnt-interested">0</span></div>
+      <div class="kanban-body" id="col-interested"></div>
+    </div>
+    <div class="kanban-col" data-status="applied">
+      <div class="kanban-head"><span>📤 הגשתי</span><span class="kanban-count" id="cnt-applied">0</span></div>
+      <div class="kanban-body" id="col-applied"></div>
+    </div>
+    <div class="kanban-col" data-status="interview">
+      <div class="kanban-head"><span>🎤 ראיון</span><span class="kanban-count" id="cnt-interview">0</span></div>
+      <div class="kanban-body" id="col-interview"></div>
+    </div>
+    <div class="kanban-col" data-status="offer">
+      <div class="kanban-head"><span>🎉 הצעה</span><span class="kanban-count" id="cnt-offer">0</span></div>
+      <div class="kanban-body" id="col-offer"></div>
+    </div>
+    <div class="kanban-col" data-status="rejected">
+      <div class="kanban-head"><span>❌ נדחה</span><span class="kanban-count" id="cnt-rejected">0</span></div>
+      <div class="kanban-body" id="col-rejected"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ DASHBOARD TAB ═══════════════ -->
+<section class="page" id="page-dashboard">
+  <div class="page-head">
+    <div class="page-title">
+      <h2>📊 דאשבורד</h2>
+      <span class="muted">סיכום פעילות</span>
+    </div>
+    <div class="page-actions">
+      <button class="btn" id="refresh-dashboard-btn">🔄 רענן</button>
+    </div>
+  </div>
+  <div id="dashboard-content"><div class="empty">טוען...</div></div>
+</section>
+
+<!-- ═══════════════ PROFILE TAB ═══════════════ -->
+<section class="page active" id="page-profile">
+  <div class="page-head">
+    <div class="page-title">
+      <h2>👤 הפרופיל שלי</h2>
+      <span class="muted" id="profile-subtitle"></span>
+    </div>
+    <div class="page-actions">
+      <button class="btn" id="upload-cv-btn">📤 העלה CV חדש</button>
+      <button class="btn primary" id="analyze-profile-btn">🧠 חשב תובנות שוק</button>
+      <input type="file" id="cv-file-input" accept=".pdf,.docx,.txt,.md" hidden />
+      <input type="file" id="avatar-file-input" accept="image/png,image/jpeg,image/webp" hidden />
+      <input type="file" id="add-cv-input" accept=".pdf,.docx,.txt,.md" hidden />
+    </div>
+  </div>
+  <div id="profile-content"><div class="empty">טוען...</div></div>
+</section>
+
+<!-- ═══════════════ HISTORY TAB ═══════════════ -->
+<section class="page" id="page-history">
+  <div class="page-head">
+    <div class="page-title">
+      <h2>🗄️ ארכיון סריקות</h2>
+      <span class="muted" id="history-stats"></span>
+    </div>
+  </div>
+  <div id="history-list"><div class="empty">טוען...</div></div>
+</section>
+
+<!-- ═══════════════ AUTOMATION TAB ═══════════════ -->
+<section class="page" id="page-automation">
+  <div class="page-head">
+    <div class="page-title">
+      <h2>⚙️ אוטומציה והתראות</h2>
+      <span class="muted">הפעל סריקה אוטומטית וקבל התראות בטלגרם</span>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <h3>⏰ סריקה אוטומטית</h3>
+    <div class="form-row">
+      <label>
+        <input type="checkbox" id="auto-enabled" />
+        הפעל סריקה אוטומטית
+      </label>
+    </div>
+    <div class="form-row">
+      <label>תדירות:
+        <select id="auto-interval">
+          <option value="1">כל שעה</option>
+          <option value="3">כל 3 שעות</option>
+          <option value="6" selected>כל 6 שעות</option>
+          <option value="12">כל 12 שעות</option>
+          <option value="24">פעם ביום</option>
+        </select>
+      </label>
+    </div>
+    <div class="muted" id="auto-status">—</div>
+    <div style="margin-top:12px; display:flex; gap:8px">
+      <button class="btn primary" id="auto-save">💾 שמור</button>
+      <button class="btn" id="auto-run-now">▶️ הרץ עכשיו</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <h3>💰 מעקב עלויות AI</h3>
+    <div id="cost-dashboard"><div class="muted">טוען...</div></div>
+  </div>
+
+  <div class="card">
+    <h3>📱 התראות בטלגרם</h3>
+    <p class="muted" style="margin-bottom:12px">
+      צור בוט ב-<a href="https://t.me/BotFather" target="_blank">@BotFather</a>, קבל token, ושלח הודעה לבוט שלך — אז קבל את ה-chat id מ-
+      <a href="https://api.telegram.org/bot{TOKEN}/getUpdates" target="_blank">getUpdates API</a>.
+    </p>
+    <div class="form-row">
+      <label>Bot Token:
+        <input type="password" id="tg-token" placeholder="123456:ABC-DEF..." />
+      </label>
+    </div>
+    <div class="form-row">
+      <label>Chat ID:
+        <input type="text" id="tg-chat" placeholder="123456789" />
+      </label>
+    </div>
+    <div class="form-row">
+      <label>
+        <input type="checkbox" id="tg-enabled" />
+        הפעל התראות
+      </label>
+    </div>
+    <div class="form-row">
+      <label>סף התראה:
+        <select id="tg-grade">
+          <option value="A">A בלבד (הכי איכותי)</option>
+          <option value="AB">A-B</option>
+          <option value="ABC">A-C</option>
+        </select>
+      </label>
+    </div>
+    <div style="margin-top:12px; display:flex; gap:8px">
+      <button class="btn primary" id="tg-save">💾 שמור</button>
+      <button class="btn" id="tg-test">🧪 שלח הודעת בדיקה</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ AI OPPORTUNITIES TAB ═══════════════ -->
+<section class="page" id="page-ai">
+  <div class="ai-hero">
+    <div class="ai-hero-bg"></div>
+    <div class="ai-hero-content">
+      <div class="ai-hero-icon">🤖</div>
+      <h2>הזדמנויות AI</h2>
+      <p>תפקידים חמים, קורסים, כלים, שכר ומגמות — מבוסס חיפוש אינטרנט עדכני</p>
+      <div class="ai-hero-actions">
+        <button class="btn ai-btn-glow" id="ai-refresh-btn">🔄 עדכן מהרשת</button>
+        <button class="btn" id="ai-download-btn" style="display:none">📄 הורד .MD</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ai-content">
+    <div class="ai-intro-grid">
+      <div class="ai-intro-card">
+        <div class="ai-intro-icon">🔥</div>
+        <h4>תפקידים חמים</h4>
+        <p>משרות AI מבוקשות בישראל + remote גלובלי עם טווחי שכר</p>
+      </div>
+      <div class="ai-intro-card">
+        <div class="ai-intro-icon">📚</div>
+        <h4>קורסים והסמכות</h4>
+        <p>קורסים חינמיים ובתשלום, certifications ששווים את הכסף</p>
+      </div>
+      <div class="ai-intro-card">
+        <div class="ai-intro-icon">🛠️</div>
+        <h4>כלים ו-Frameworks</h4>
+        <p>LangChain, CrewAI, vector DBs — מה שמעסיקים מחפשים</p>
+      </div>
+      <div class="ai-intro-card">
+        <div class="ai-intro-icon">💰</div>
+        <h4>שכר ומגמות</h4>
+        <p>טבלת שכר AI בישראל + תחזיות 2026-2027</p>
+      </div>
+      <div class="ai-intro-card">
+        <div class="ai-intro-icon">🏢</div>
+        <h4>חברות שמגייסות</h4>
+        <p>מי מגייס AI engineers עכשיו — ישראל + גלובלי</p>
+      </div>
+      <div class="ai-intro-card">
+        <div class="ai-intro-icon">🎯</div>
+        <h4>המלצות אישיות</h4>
+        <p>מותאם לפרופיל שלך — מה ללמוד, לאן להגיש</p>
+      </div>
+    </div>
+    <div class="ai-intro-footer">
+      <span>⏱️ 30-60 שניות</span>
+      <span>💰 ~$0.04</span>
+      <span>🧊 נשמר ב-cache ליומיים</span>
+      <span>👤 מותאם אישית אם יש פרופיל</span>
+    </div>
+  </div>
+
+  <div id="ai-report" style="display:none"></div>
+</section>
+
+<!-- ═══════════════ PORTFOLIO TAB ═══════════════ -->
+<section class="page" id="page-portfolio">
+  <div class="ai-hero" style="margin-bottom:0">
+    <div class="ai-hero-bg" style="background: linear-gradient(135deg, #1a2810 0%, #0d3020 40%, #102840 70%, #1a2810 100%)"></div>
+    <div class="ai-hero-content" style="padding:36px 32px">
+      <div class="ai-hero-icon" style="filter:drop-shadow(0 0 20px rgba(63,185,80,0.5))">🚀</div>
+      <h2 style="background:linear-gradient(135deg,#d1fae5,#6ee7b7,#3fb950);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">פרויקטי Portfolio</h2>
+      <p>רעיונות לפרויקטים שיגרמו למגייסים להתרשם — מותאמים לשוק הנוכחי</p>
+    </div>
+  </div>
+
+  <div style="padding:24px;max-width:1200px;margin:0 auto">
+    <div class="filters" style="margin-bottom:16px">
+      <select id="pf-category"><option value="">כל הקטגוריות</option></select>
+      <select id="pf-difficulty">
+        <option value="">כל הרמות</option>
+        <option value="easy">🟢 קל (1-2 שבועות)</option>
+        <option value="medium">🟡 בינוני (2-3 שבועות)</option>
+        <option value="hard">🔴 מאתגר (3-4 שבועות)</option>
+      </select>
+      <input id="pf-q" placeholder="🔍 חיפוש..." />
+    </div>
+
+    <div id="pf-tips" style="margin-bottom:20px"></div>
+    <div id="pf-list"></div>
+  </div>
+</section>
+
+<!-- ═══════════════ LEETCODE TAB ═══════════════ -->
+<section class="page" id="page-leetcode">
+  <div class="page-head">
+    <div class="page-title">
+      <h2>🧩 LeetCode — הכנה לראיונות טכניים</h2>
+      <span class="muted">שאלות מסודרות לפי קטגוריה ורמה, עם טיפים ודוגמאות</span>
+    </div>
+  </div>
+
+  <div id="lc-plans"></div>
+
+  <div class="filters" style="margin-bottom:16px">
+    <select id="lc-level">
+      <option value="">כל הרמות</option>
+      <option value="easy">🟢 Easy</option>
+      <option value="medium">🟡 Medium</option>
+      <option value="hard">🔴 Hard</option>
+    </select>
+    <select id="lc-category"><option value="">כל הקטגוריות</option></select>
+    <input id="lc-q" placeholder="🔍 חיפוש שאלה..." />
+  </div>
+
+  <div id="lc-list"><div class="empty">טוען...</div></div>
+</section>
+
+<!-- ═══════════════ COMPANIES TAB ═══════════════ -->
+<section class="page" id="page-companies">
+  <div class="page-head">
+    <div class="page-title">
+      <h2>🏢 25 חברות טק מובילות בישראל</h2>
+      <span class="muted">דפי קריירה, אנשי קשר ואסטרטגיית גישה</span>
+    </div>
+  </div>
+
+  <div class="sub-tabs" style="margin-bottom:16px">
+    <button class="sub-tab active" data-sub="companies-list-view">🏢 חברות מובילות</button>
+    <button class="sub-tab" data-sub="wlb-view">⚖️ Work-Life Balance</button>
+    <a href="/api/company-briefs-all" class="btn small" download style="margin-right:auto">📄 הורד סיכום (.md)</a>
+  </div>
+
+  <div id="companies-list-view">
+  <div class="card" style="margin-bottom:20px; border-right: 3px solid var(--accent)">
+    <h3>💡 איך למצוא את ה-HR הנכון?</h3>
+    <div style="font-size:13px; line-height:1.8">
+      <b>1. LinkedIn — הדרך הכי אפקטיבית:</b> ליד כל חברה יש קישור ישיר לחיפוש recruiters שלה ב-LinkedIn. שלח בקשת חיבור + הודעה קצרה (2-3 שורות) עם למה אתה מתאים.<br>
+      <b>2. Referral — יותר חשוב מ-HR:</b> מצא חברים/מכרים שעובדים שם. 40-60% מהגיוסים ב-FAANG מגיעים מ-referral פנימי.<br>
+      <b>3. מייל ישיר:</b> רוב החברות הגדולות לא עונות למיילים קרים. עדיף LinkedIn DM או הגשה דרך אתר + מעקב ב-LinkedIn.<br>
+      <b>4. אירועי טק:</b> כנסים כמו GeekTime, Reversim, DevOpsDays Israel — מגייסים מגיעים לשם. להיות מוכן עם "elevator pitch".<br>
+      <b>5. Open Source:</b> תרומה לפרויקטים של החברה → visibility ישיר לצוותי הפיתוח.
+    </div>
+  </div>
+
+  <div class="filters" style="margin-bottom:16px">
+    <input id="comp-q" placeholder="🔍 חיפוש חברה..." />
+    <select id="comp-tier">
+      <option value="">כל הרמות</option>
+      <option value="FAANG">FAANG</option>
+      <option value="Tier 1">Tier 1</option>
+      <option value="Tier 1 IL">Tier 1 IL</option>
+      <option value="Tier 2 IL">Tier 2 IL</option>
+      <option value="Enterprise">Enterprise</option>
+      <option value="Growth Startup">Growth Startup</option>
+    </select>
+  </div>
+
+  <div id="companies-list"><div class="empty">טוען...</div></div>
+  </div><!-- end companies-list-view -->
+
+  <div id="wlb-view" style="display:none">
+    <div class="filters" style="margin-bottom:16px">
+      <select id="wlb-tier">
+        <option value="">כל הרמות</option>
+        <option value="excellent">🥇 מצוין (9+)</option>
+        <option value="good">🥈 טוב (7-8.9)</option>
+        <option value="moderate">🥉 סביר (6-6.9)</option>
+        <option value="challenging">⚠️ מאתגר (<6.5)</option>
+      </select>
+      <input id="wlb-q" placeholder="🔍 חיפוש חברה..." />
+      <button class="btn small" id="wlb-deep-btn">🔍 דוח מעמיק מהרשת (AI)</button>
+    </div>
+    <div id="wlb-list"><div class="empty">טוען...</div></div>
+  </div><!-- end wlb-view -->
+</section>
+
+<!-- ═══════════════ MODALS ═══════════════ -->
+
+<!-- Generation modal -->
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modal-title">—</h3>
+      <button class="icon-btn" id="modal-close">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot">
+      <button class="btn" id="modal-copy">📋 העתק</button>
+      <button class="btn" id="modal-md">💾 .MD</button>
+      <button class="btn" id="modal-docx">📄 .DOCX</button>
+      <button class="btn" id="modal-pdf">📕 .PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Profile management modal -->
+<div class="modal-backdrop" id="profiles-modal-backdrop">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>ניהול פרופילים</h3>
+      <button class="icon-btn" id="profiles-modal-close">✕</button>
+    </div>
+    <div class="modal-body" id="profiles-modal-body">טוען...</div>
+    <div class="modal-foot">
+      <button class="btn primary" id="add-profile-btn">+ הוסף פרופיל מ-CV</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mock interview modal -->
+<div class="modal-backdrop" id="mock-modal-backdrop">
+  <div class="modal mock-modal">
+    <div class="modal-head">
+      <h3 id="mock-title">🎤 Mock Interview</h3>
+      <div style="display:flex;gap:6px">
+        <button class="btn small" id="mock-restart">🔄 התחל מחדש</button>
+        <button class="icon-btn" id="mock-close">✕</button>
+      </div>
+    </div>
+    <div class="modal-body" id="mock-chat"></div>
+    <div class="mock-input">
+      <textarea id="mock-input-field" placeholder="הקלד את התשובה שלך... (Shift+Enter לשורה חדשה, Enter לשליחה)" rows="2"></textarea>
+      <button class="btn primary" id="mock-send">שלח ←</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tracker note modal -->
+<div class="modal-backdrop" id="note-modal-backdrop">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-head">
+      <h3 id="note-title">הערות</h3>
+      <button class="icon-btn" id="note-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <textarea id="note-text" rows="8" style="width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:inherit"></textarea>
+    </div>
+    <div class="modal-foot">
+      <button class="btn primary" id="note-save">💾 שמור</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
