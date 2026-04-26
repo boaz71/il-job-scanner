@@ -14,6 +14,8 @@ import {
   analyzeSkillGap, generateSalaryPrep, mockInterviewReply,
   companyDeepDive, generateLinkedInOutreach, generateFollowUp, compareJobs,
   generateAIOpportunities, generateWLBRanking,
+  mentorReply, type MentorContext,
+  extractStructuredCV, translateStructuredCV, structuredCVToMarkdown,
   type Lang, type MockMessage,
 } from "./cv.js";
 import { markdownToDocx, markdownToPdf } from "./export.js";
@@ -719,6 +721,222 @@ const server = createServer(async (req, res) => {
       });
       res.end(buf);
       return;
+    }
+
+    // ── CV Editor — structured CV management ──
+    if (pathname === "/api/cv-editor/get" && method === "GET") {
+      const profileId = query.get("profileId");
+      const cvId = query.get("cvId");
+      const lang = (query.get("lang") || "en") as "en" | "he";
+
+      const stored = profileId ? getProfile(profileId) : getActiveProfile();
+      if (!stored) return sendJSON(res, 404, { error: "פרופיל לא נמצא" });
+
+      const cv = cvId
+        ? stored.cvs.find(c => c.id === cvId)
+        : stored.cvs[stored.primary_cv_index || 0];
+      if (!cv) return sendJSON(res, 404, { error: "CV לא נמצא" });
+
+      // Lazy extract structured if missing
+      if (!cv.structured) cv.structured = {};
+      if (!cv.structured[lang]) {
+        cv.structured[lang] = await extractStructuredCV(cv.text, lang);
+        saveStoredProfile(stored);
+      }
+
+      return sendJSON(res, 200, {
+        ok: true,
+        cvId: cv.id,
+        profileId: stored.id,
+        language: lang,
+        structured: cv.structured[lang],
+        available_languages: Object.keys(cv.structured).filter(k => cv.structured![k as "en" | "he"]),
+      });
+    }
+
+    if (pathname === "/api/cv-editor/translate" && method === "POST") {
+      const body = await readBody(req);
+      const { profileId, cvId, toLanguage } = JSON.parse(body.toString("utf-8"));
+      const stored = profileId ? getProfile(profileId) : getActiveProfile();
+      if (!stored) return sendJSON(res, 404, { error: "פרופיל לא נמצא" });
+      const cv = cvId ? stored.cvs.find(c => c.id === cvId) : stored.cvs[stored.primary_cv_index || 0];
+      if (!cv) return sendJSON(res, 404, { error: "CV לא נמצא" });
+      if (!cv.structured) cv.structured = {};
+
+      // Need a source structured CV — use the other language if available, else extract from text
+      const sourceLang = toLanguage === "en" ? "he" : "en";
+      const source = cv.structured[sourceLang] || await extractStructuredCV(cv.text, sourceLang);
+      if (!cv.structured[sourceLang]) cv.structured[sourceLang] = source;
+
+      const translated = await translateStructuredCV(source, toLanguage);
+      cv.structured[toLanguage as "en" | "he"] = translated;
+      saveStoredProfile(stored);
+
+      return sendJSON(res, 200, { ok: true, structured: translated });
+    }
+
+    if (pathname === "/api/cv-editor/save" && method === "POST") {
+      const body = await readBody(req);
+      const { profileId, cvId, language, structured } = JSON.parse(body.toString("utf-8"));
+      const stored = profileId ? getProfile(profileId) : getActiveProfile();
+      if (!stored) return sendJSON(res, 404, { error: "פרופיל לא נמצא" });
+      const cv = cvId ? stored.cvs.find(c => c.id === cvId) : stored.cvs[stored.primary_cv_index || 0];
+      if (!cv) return sendJSON(res, 404, { error: "CV לא נמצא" });
+      if (!cv.structured) cv.structured = {};
+      cv.structured[language as "en" | "he"] = structured;
+      saveStoredProfile(stored);
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    if (pathname === "/api/cv-editor/generate" && method === "POST") {
+      const body = await readBody(req);
+      const { structured, format } = JSON.parse(body.toString("utf-8"));
+      if (!structured) return sendJSON(res, 400, { error: "חסר structured" });
+
+      const md = structuredCVToMarkdown(structured);
+      const rawName = String(structured.header?.name || "resume");
+      // ASCII fallback for filename, full UTF-8 in filename*
+      const asciiName = rawName.replace(/[^\x20-\x7E]/g, "_").replace(/\s+/g, "_") || "resume";
+      const utf8Name = encodeURIComponent(rawName);
+
+      if (format === "md") {
+        const buf = Buffer.from(md, "utf-8");
+        res.writeHead(200, {
+          "Content-Type": "text/markdown; charset=utf-8",
+          "Content-Disposition": `attachment; filename="CV-${asciiName}.md"; filename*=UTF-8''CV-${utf8Name}.md`,
+          "Content-Length": String(buf.length),
+        });
+        res.end(buf);
+        return;
+      }
+      if (format === "docx") {
+        const buf = await markdownToDocx(md);
+        res.writeHead(200, {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "Content-Disposition": `attachment; filename="CV-${asciiName}.docx"; filename*=UTF-8''CV-${utf8Name}.docx`,
+          "Content-Length": String(buf.length),
+        });
+        res.end(buf);
+        return;
+      }
+      if (format === "pdf") {
+        const buf = await markdownToPdf(md);
+        res.writeHead(200, {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="CV-${asciiName}.pdf"; filename*=UTF-8''CV-${utf8Name}.pdf`,
+          "Content-Length": String(buf.length),
+        });
+        res.end(buf);
+        return;
+      }
+      // Default: return markdown as JSON
+      return sendJSON(res, 200, { ok: true, markdown: md });
+    }
+
+    // ── Mentor ──
+    if (pathname === "/api/mentor" && method === "GET") {
+      const { loadMentor } = await import("./mentor.js");
+      return sendJSON(res, 200, loadMentor());
+    }
+
+    if (pathname === "/api/mentor/goal" && method === "POST") {
+      const { setGoal } = await import("./mentor.js");
+      const body = await readBody(req);
+      const goal = JSON.parse(body.toString("utf-8"));
+      const s = setGoal(goal);
+      return sendJSON(res, 200, { ok: true, state: s });
+    }
+
+    if (pathname === "/api/mentor/chat" && method === "POST") {
+      const { loadMentor, addMessage } = await import("./mentor.js");
+      const body = await readBody(req);
+      const { message } = JSON.parse(body.toString("utf-8"));
+      if (!message?.trim()) return sendJSON(res, 400, { error: "חסרה הודעה" });
+
+      const state = loadMentor();
+      const active = getActiveProfile();
+      const tracked = listTracked();
+
+      // Build context
+      const byStatus: Record<string, number> = {};
+      for (const t of tracked) byStatus[t.status] = (byStatus[t.status] || 0) + 1;
+      const trackedSummary = Object.entries(byStatus).map(([k, v]) => `${k}: ${v}`).join(" · ") || "אין משרות במעקב";
+
+      // Recent activity (last 7 days)
+      const weekAgo = Date.now() - 7 * 86400000;
+      const recentApplications = tracked.filter(t => t.applied_at && new Date(t.applied_at).getTime() > weekAgo).length;
+      const recentTracked = tracked.filter(t => new Date(t.added_at).getTime() > weekAgo).length;
+      const recentActivity = `${recentTracked} משרות נוספו למעקב, ${recentApplications} הוגשו (7 ימים אחרונים)`;
+
+      const ctx: MentorContext = {
+        goal: state.goal,
+        cvText: active ? getPrimaryCVText(active) : null,
+        trackedSummary,
+        recentActivity,
+        conversationHistory: state.conversations.slice(-12).map(m => ({ role: m.role, content: m.content })),
+      };
+
+      const reply = await mentorReply(ctx, message);
+
+      // Save both messages
+      addMessage("user", message);
+      addMessage("assistant", reply);
+
+      return sendJSON(res, 200, { ok: true, reply });
+    }
+
+    if (pathname === "/api/mentor/clear" && method === "POST") {
+      const { clearConversations } = await import("./mentor.js");
+      clearConversations();
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    // ── GitHub scan & rate ──
+    if (pathname === "/api/github/scan" && method === "POST") {
+      const body = await readBody(req);
+      const { username } = JSON.parse(body.toString("utf-8"));
+      if (!username) return sendJSON(res, 400, { error: "חסר username" });
+
+      // Fetch public repos from GitHub API
+      const ghRes = await fetch(`https://api.github.com/users/${encodeURIComponent(username)}/repos?per_page=100&sort=updated`, {
+        headers: { "Accept": "application/vnd.github.v3+json", "User-Agent": "il-job-scanner/1.0" },
+      });
+      if (!ghRes.ok) {
+        if (ghRes.status === 404) return sendJSON(res, 404, { error: `משתמש "${username}" לא נמצא ב-GitHub` });
+        return sendJSON(res, 400, { error: `GitHub API error: ${ghRes.status}` });
+      }
+      const repos: any[] = await ghRes.json();
+      if (!repos.length) return sendJSON(res, 200, { ok: true, repos: [], analysis: "" });
+
+      // Build repos summary for Claude
+      const reposSummary = repos
+        .filter((r: any) => !r.fork)
+        .slice(0, 30)
+        .map((r: any) => `- **${r.name}** (${r.language || "N/A"}) — ⭐${r.stargazers_count} · 🍴${r.forks_count} · ${r.description || "no description"} · updated: ${r.updated_at?.slice(0, 10)} · ${r.homepage ? "🌐 " + r.homepage : "no demo"}`)
+        .join("\n");
+
+      // Use cached generate for the analysis
+      const { generateGitHubAnalysis } = await import("./cv.js");
+      const active = getActiveProfile();
+      const cvText = active ? getPrimaryCVText(active) : null;
+      const analysis = await generateGitHubAnalysis(username, reposSummary, cvText);
+
+      const reposData = repos
+        .filter((r: any) => !r.fork)
+        .slice(0, 30)
+        .map((r: any) => ({
+          name: r.name,
+          url: r.html_url,
+          description: r.description,
+          language: r.language,
+          stars: r.stargazers_count,
+          forks: r.forks_count,
+          updated: r.updated_at,
+          homepage: r.homepage,
+          topics: r.topics || [],
+        }));
+
+      return sendJSON(res, 200, { ok: true, username, repos: reposData, analysis });
     }
 
     // ── Portfolio ideas ──

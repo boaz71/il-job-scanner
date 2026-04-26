@@ -843,6 +843,368 @@ export async function generateWLBRanking(): Promise<string> {
   });
 }
 
+// ── Structured CV extraction ──
+function parseJsonFromText(text: string): any {
+  // Strip markdown code fences if present
+  let clean = text.trim();
+  const fenceMatch = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (fenceMatch) clean = fenceMatch[1].trim();
+  // Find first { and last } to handle surrounding text
+  const start = clean.indexOf("{");
+  const end = clean.lastIndexOf("}");
+  if (start >= 0 && end > start) clean = clean.slice(start, end + 1);
+  return JSON.parse(clean);
+}
+
+export async function extractStructuredCV(cvText: string, language: "en" | "he"): Promise<any> {
+  const langInstructions = language === "en"
+    ? "Extract all content in English. Translate Hebrew to English if needed."
+    : "חלץ את כל התוכן בעברית. תרגם מאנגלית לעברית אם צריך.";
+
+  return parseJsonFromText(await cachedGenerate({
+    type: "structured-cv",
+    cacheKey: [language, cvText.length.toString(), cvText.slice(0, 100).replace(/\s/g, "")],
+    model: model(),
+    maxTokens: 4000,
+    messages: [{
+      role: "user",
+      content: `Extract the CV below into a structured JSON. ${langInstructions}
+
+CV TEXT:
+---
+${cvText}
+---
+
+Return ONLY valid JSON matching this schema (no explanations, no markdown):
+
+{
+  "language": "${language}",
+  "header": {
+    "name": "Full Name",
+    "title": "Current Job Title",
+    "email": "...",
+    "phone": "...",
+    "location": "City, Country",
+    "linkedin": "URL or username",
+    "github": "URL or username",
+    "website": "URL"
+  },
+  "summary": "2-4 sentence professional summary",
+  "experience": [
+    {
+      "company": "Company Name",
+      "title": "Job Title",
+      "location": "City",
+      "start_date": "Jan 2020",
+      "end_date": "Present",
+      "description": "1-2 sentence role description (optional)",
+      "achievements": ["Bullet 1", "Bullet 2", "Bullet 3"],
+      "technologies": ["React", "Node.js"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "University Name",
+      "degree": "B.Sc.",
+      "field": "Computer Science",
+      "location": "City",
+      "start_date": "2015",
+      "end_date": "2019",
+      "gpa": "3.8",
+      "honors": "Cum Laude"
+    }
+  ],
+  "skills": [
+    { "category": "Languages", "skills": ["JavaScript", "Python"] },
+    { "category": "Frameworks", "skills": ["React", "Express"] },
+    { "category": "Tools", "skills": ["Docker", "Git"] }
+  ],
+  "projects": [
+    { "name": "Project", "description": "...", "url": "...", "technologies": [], "date": "2023" }
+  ],
+  "certifications": [
+    { "name": "AWS Certified", "issuer": "AWS", "date": "2022", "url": "..." }
+  ],
+  "languages": [
+    { "name": "English", "level": "Native" }
+  ]
+}
+
+Rules:
+- Preserve dates as written ("Jan 2020 - Present", "2020-2023", etc.)
+- Extract ALL achievements as separate bullets — do not merge
+- Group skills logically (Languages, Frameworks, DBs, DevOps, etc.)
+- Empty arrays [] for missing sections, do not omit fields
+- Only include optional fields if you find them in the CV
+- ${language === "en" ? "Use professional English" : "השתמש בעברית מקצועית"}`,
+    }],
+  }));
+}
+
+// ── Translate structured CV to another language ──
+export async function translateStructuredCV(structured: any, toLanguage: "en" | "he"): Promise<any> {
+  const target = toLanguage === "en" ? "English" : "Hebrew";
+  return parseJsonFromText(await cachedGenerate({
+    type: "translated-cv",
+    cacheKey: [toLanguage, JSON.stringify(structured).length.toString(), structured.header?.name || ""],
+    model: model(),
+    maxTokens: 4000,
+    messages: [{
+      role: "user",
+      content: `Translate this structured CV JSON to ${target}. Keep the SAME JSON structure, only translate text content.
+
+DO NOT translate:
+- Email, phone, URLs (linkedin, github, website)
+- Technology names (React, Node.js, AWS, etc.)
+- Company names (keep original)
+- Brand names
+
+DO translate:
+- Job titles
+- Descriptions, achievements, summary
+- Education degrees and fields
+- Locations (cities/countries to ${target})
+- Skill category names
+- Project descriptions
+- Certification names (only if commonly translated)
+
+Source CV:
+${JSON.stringify(structured, null, 2)}
+
+Return ONLY valid JSON. Set "language": "${toLanguage}".`,
+    }],
+  }));
+}
+
+// ── Render structured CV to Markdown ──
+export function structuredCVToMarkdown(s: any): string {
+  const isHe = s.language === "he";
+  const t = isHe ? heLabels : enLabels;
+  let md = "";
+
+  // Header
+  md += `# ${s.header.name}\n\n`;
+  md += `**${s.header.title}**\n\n`;
+  const contact = [
+    s.header.email && `📧 ${s.header.email}`,
+    s.header.phone && `📱 ${s.header.phone}`,
+    s.header.location && `📍 ${s.header.location}`,
+    s.header.linkedin && `💼 ${s.header.linkedin}`,
+    s.header.github && `🐙 ${s.header.github}`,
+    s.header.website && `🌐 ${s.header.website}`,
+  ].filter(Boolean).join(" · ");
+  if (contact) md += `${contact}\n\n---\n\n`;
+
+  // Summary
+  if (s.summary) md += `## ${t.summary}\n\n${s.summary}\n\n`;
+
+  // Experience
+  if (s.experience?.length) {
+    md += `## ${t.experience}\n\n`;
+    for (const e of s.experience) {
+      md += `### ${e.title} — ${e.company}\n`;
+      md += `*${e.start_date} – ${e.end_date}${e.location ? ` · ${e.location}` : ""}*\n\n`;
+      if (e.description) md += `${e.description}\n\n`;
+      if (e.achievements?.length) {
+        for (const a of e.achievements) md += `- ${a}\n`;
+        md += "\n";
+      }
+      if (e.technologies?.length) md += `**${t.tech}:** ${e.technologies.join(", ")}\n\n`;
+    }
+  }
+
+  // Education
+  if (s.education?.length) {
+    md += `## ${t.education}\n\n`;
+    for (const e of s.education) {
+      md += `### ${e.degree}${e.field ? ` ${t.in} ${e.field}` : ""}\n`;
+      md += `**${e.institution}**${e.location ? ` · ${e.location}` : ""} · *${e.start_date} – ${e.end_date}*\n`;
+      const extras = [e.gpa && `GPA: ${e.gpa}`, e.honors].filter(Boolean).join(" · ");
+      if (extras) md += `${extras}\n`;
+      md += "\n";
+    }
+  }
+
+  // Skills
+  if (s.skills?.length) {
+    md += `## ${t.skills}\n\n`;
+    for (const cat of s.skills) {
+      md += `**${cat.category}:** ${cat.skills.join(", ")}\n\n`;
+    }
+  }
+
+  // Projects
+  if (s.projects?.length) {
+    md += `## ${t.projects}\n\n`;
+    for (const p of s.projects) {
+      md += `### ${p.name}${p.date ? ` (${p.date})` : ""}\n`;
+      md += `${p.description}\n`;
+      if (p.url) md += `🔗 ${p.url}\n`;
+      if (p.technologies?.length) md += `**${t.tech}:** ${p.technologies.join(", ")}\n`;
+      md += "\n";
+    }
+  }
+
+  // Certifications
+  if (s.certifications?.length) {
+    md += `## ${t.certifications}\n\n`;
+    for (const c of s.certifications) {
+      md += `- **${c.name}** — ${c.issuer} *(${c.date})*${c.url ? ` · ${c.url}` : ""}\n`;
+    }
+    md += "\n";
+  }
+
+  // Languages
+  if (s.languages?.length) {
+    md += `## ${t.languages}\n\n`;
+    for (const l of s.languages) md += `- **${l.name}**: ${l.level}\n`;
+    md += "\n";
+  }
+
+  return md;
+}
+
+const enLabels = {
+  summary: "Professional Summary",
+  experience: "Experience",
+  education: "Education",
+  skills: "Skills",
+  projects: "Projects",
+  certifications: "Certifications",
+  languages: "Languages",
+  tech: "Technologies",
+  in: "in",
+};
+const heLabels = {
+  summary: "תקציר מקצועי",
+  experience: "ניסיון תעסוקתי",
+  education: "השכלה",
+  skills: "כישורים",
+  projects: "פרויקטים",
+  certifications: "הסמכות",
+  languages: "שפות",
+  tech: "טכנולוגיות",
+  in: "ב-",
+};
+
+// ── Mentor chat ──
+export interface MentorContext {
+  goal: any;
+  cvText: string | null;
+  trackedSummary: string;          // "5 interested, 2 applied, 1 interview"
+  recentActivity: string;          // "3 משרות חדשות נוספו השבוע, 1 הוגשה"
+  conversationHistory: { role: "user" | "assistant"; content: string }[];
+}
+
+export async function mentorReply(ctx: MentorContext, userMessage: string): Promise<string> {
+  const anthropic = client();
+
+  const goalText = ctx.goal ? `
+**מטרת המועמד:**
+- תפקיד יעד: ${ctx.goal.target_role}
+- שכר יעד: ${ctx.goal.target_salary_monthly ? `₪${ctx.goal.target_salary_monthly.toLocaleString()}/חודש` : "לא צוין"}
+- לוז: ${ctx.goal.target_timeline_months} חודשים
+- מכשולים נוכחיים: ${ctx.goal.current_obstacles || "—"}
+- מחויבות שבועית: ${ctx.goal.commitments_per_week || "—"}
+- למה זה חשוב לו: ${ctx.goal.why || "—"}
+` : "**אין מטרה מוגדרת — שאל את המועמד מה המטרה שלו.**";
+
+  const cvSnippet = ctx.cvText ? `\n**קורות חיים בקצרה:**\n${ctx.cvText.slice(0, 1500)}\n` : "";
+
+  const systemPrompt = `אתה מנטור קריירה אישי למפתח/ת בתעשיית ההייטק הישראלית. תאריך: ${TODAY()}.
+
+${goalText}
+${cvSnippet}
+**סטטוס המעקב הנוכחי:** ${ctx.trackedSummary}
+**פעילות אחרונה:** ${ctx.recentActivity}
+
+**איך אתה צריך להתנהג:**
+- כמו מנטור אמיתי, לא בוט. ישיר, חם אבל לא מתחנף.
+- שאל שאלות חודרות כשצריך — אל תיתן עצות גנריות.
+- תן סטפים קונקרטיים, לא רעיונות מעורפלים.
+- כשהמועמד אומר "אני תקוע" — חקור למה לפני שתציע פתרונות.
+- הזכר את המטרה שלו אם הוא נסחף לדברים לא רלוונטיים.
+- אם הוא לא עשה כלום שבוע שלם — שאל למה, אל תתעלם.
+- ציין מספרים ספציפיים מהמעקב כשרלוונטי ("יש לך 5 משרות במצב interested מ-3 שבועות, מה קורה?").
+- שמור על תשובות קצרות יחסית — זו שיחה, לא הרצאה. (3-6 משפטים בד"כ).
+- בסוף הודעה — שאל שאלה אחת ממוקדת (חוץ מאם זה ברור שלא צריך).
+- בעברית.`;
+
+  const messages = ctx.conversationHistory.length === 0
+    ? [{ role: "user" as const, content: userMessage }]
+    : [...ctx.conversationHistory.map(m => ({ role: m.role, content: m.content })), { role: "user" as const, content: userMessage }];
+
+  const msg = await anthropic.messages.create({
+    model: model(),
+    max_tokens: 800,
+    system: systemPrompt,
+    messages,
+  });
+
+  const text = extractText(msg);
+  logCost("mentor", model(), msg.usage.input_tokens, msg.usage.output_tokens, false, false);
+  return text;
+}
+
+// ── GitHub portfolio analysis ──
+export async function generateGitHubAnalysis(username: string, reposSummary: string, cvText: string | null): Promise<string> {
+  const profileContext = cvText
+    ? `\nרקע המועמד (מקורות חיים):\n---\n${cvText.slice(0, 1500)}\n---\nהתאם את ההמלצות לרקע הספציפי.\n`
+    : "";
+
+  // Cache key includes repo count + names hash so new repos bust the cache
+  const repoFingerprint = String(reposSummary.split("\n").length) + "-" +
+    reposSummary.slice(0, 200).replace(/[^a-zA-Z0-9]/g, "").slice(0, 30);
+
+  return cachedGenerate({
+    type: "github-analysis",
+    cacheKey: [username, repoFingerprint],
+    model: model(),
+    maxTokens: 4000,
+    webSearch: false,
+    messages: [{
+      role: "user",
+      content: `התאריך היום: ${TODAY()}.
+
+אתה מומחה portfolio review למפתחים. נתח את חשבון GitHub של **${username}** ודרג את הפרויקטים כ-portfolio.
+${profileContext}
+ריפוזיטוריז ציבוריים (לא forks):
+${reposSummary}
+
+הכן דוח Markdown בעברית:
+
+# 🐙 סקירת Portfolio — ${username}
+
+## 📊 ציון כללי
+תן ציון X/100 לאיכות ה-portfolio הזה מנקודת מבט של מגייס. הסבר ב-2-3 משפטים.
+
+## 🏆 Top 5 פרויקטים (מדורגים)
+לכל פרויקט מהחמשת הטובים:
+### X. שם הפרויקט
+- **ציון:** X/10
+- **שפה:** ...
+- **למה טוב:** (1-2 משפטים)
+- **מה לשפר:** (1-2 משפטים ספציפיים)
+- **ערך בראיון:** (משפט אחד)
+
+## ⚠️ פרויקטים שכדאי להסתיר או לשפר
+רשימה של 3-5 ריפוזיטוריז שפוגעים ב-portfolio (למשל: TODO apps, ריפוז ריקים, קוד לא מסודר). עם הסבר למה ומה לעשות.
+
+## 📋 מה חסר ב-Portfolio הזה
+3-5 סוגי פרויקטים שמגייס היה רוצה לראות ואין. למשל: "אין פרויקט עם tests", "אין deployment", "אין backend project".
+
+## 🎯 תוכנית פעולה — 30 ימים
+5-7 צעדים קונקרטיים בסדר עדיפות. כל צעד = פעולה ספציפית + כמה זמן + למה.
+למשל: "שבוע 1: הוסף README מפורט ל-3 הפרויקטים הטובים (2 שעות)"
+
+## 💡 טיפים ל-GitHub Profile
+3-4 שיפורים ל-profile עצמו: README.md, pinned repos, contribution graph, bio.
+
+ענייני, ישיר, פרקטי. ללא קלישאות. אל תמציא ריפוזיטוריז שלא ברשימה.`,
+    }],
+  });
+}
+
 // ── Generate cover letter for a job (uses cheap model) ──
 export async function generateCoverLetter(cvText: string, job: Job, lang: Lang = "auto"): Promise<string> {
   return cachedGenerate({

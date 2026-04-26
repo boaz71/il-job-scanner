@@ -47,6 +47,8 @@ document.querySelectorAll(".tab").forEach((tab) => {
     if (target === "tracker") loadTrackerPage();
     if (target === "dashboard") loadDashboardPage();
     if (target === "automation") loadAutomationPage();
+    if (target === "mentor") loadMentorPage();
+    if (target === "cveditor") loadCVEditor();
     if (target === "companies") loadCompaniesPage();
     if (target === "ai") loadAIPage();
     if (target === "leetcode") loadLeetcodePage();
@@ -1597,7 +1599,24 @@ document.getElementById("ai-download-btn").addEventListener("click", () => {
 // ═══════════════ Portfolio page ═══════════════
 let PF_DATA = null;
 
+// Sub-tabs for portfolio page
+document.querySelectorAll("[data-pfsub]").forEach(tab => {
+  tab.addEventListener("click", () => {
+    const target = tab.dataset.pfsub;
+    document.querySelectorAll("[data-pfsub]").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    ["overview", "ideas", "github"].forEach(id => {
+      document.getElementById("pf-sub-" + id).style.display = id === target ? "block" : "none";
+    });
+    if (target === "ideas") loadPFIdeas();
+  });
+});
+
 async function loadPortfolioPage() {
+  renderPFOverview();
+}
+
+async function loadPFIdeas() {
   if (!PF_DATA) {
     try {
       PF_DATA = await api("/api/portfolio");
@@ -1610,6 +1629,80 @@ async function loadPortfolioPage() {
   }
   renderPFTips();
   renderPFProjects();
+}
+
+function renderPFOverview() {
+  document.getElementById("pf-overview-content").innerHTML = `
+    <div class="card" style="border-right:3px solid var(--accent);margin-bottom:20px">
+      <h3>📖 מה זה Portfolio ולמה זה קריטי?</h3>
+      <p style="font-size:14px;line-height:1.8;color:var(--fg-soft)">
+        <b>Portfolio של מפתח</b> הוא אוסף של פרויקטים שמראים למגייס מה אתה יודע לעשות — לא מה אתה אומר שאתה יודע, אלא מה בנית בפועל.
+        בשנת 2026, כשמאות מועמדים מגישים לאותה משרה, portfolio חזק הוא ההבדל בין "נקרא לראיון" ל-"נזרק מהמשפך".
+      </p>
+    </div>
+
+    <div class="profile-grid" style="margin-bottom:20px">
+      <div class="card">
+        <h3>🎯 למה Portfolio > קו"ח</h3>
+        <div style="font-size:13px;line-height:1.7;color:var(--fg-soft)">
+          <p>📄 <b>קורות חיים</b> אומרים "יש לי 5 שנות ניסיון ב-React"</p>
+          <p>🚀 <b>Portfolio</b> מראה את ה-React app שבנית — עם קוד, deployment, ו-README</p>
+          <p style="margin-top:8px">מגייסים מסתכלים על GitHub לפני שקוראים CV. <b>67% מהמגייסים</b> אומרים שפרויקטים אישיים משפיעים על ההחלטה.</p>
+        </div>
+      </div>
+      <div class="card">
+        <h3>📦 מה Portfolio כולל</h3>
+        <div style="font-size:13px;line-height:1.7;color:var(--fg-soft)">
+          <p>✅ <b>GitHub Profile</b> — ריפוזיטוריז ציבוריים מסודרים</p>
+          <p>✅ <b>2-4 פרויקטים מרכזיים</b> — כל אחד פותר בעיה אמיתית</p>
+          <p>✅ <b>README מפורט</b> — screenshots, הסבר, how to run</p>
+          <p>✅ <b>Live demo</b> — לפחות פרויקט אחד deployed</p>
+          <p>✅ <b>Clean code</b> — עם tests, CI, .gitignore</p>
+          <p>⭐ <b>Bonus</b> — blog, npm package, open source PR</p>
+        </div>
+      </div>
+      <div class="card">
+        <h3>🏗️ איך בונים Portfolio ב-30 יום</h3>
+        <div style="font-size:13px;line-height:1.7;color:var(--fg-soft)">
+          <p><b>שבוע 1:</b> סדר GitHub profile — README, bio, pinned repos</p>
+          <p><b>שבוע 2:</b> בנה פרויקט אחד חזק (AI/Fullstack) עם README מלא</p>
+          <p><b>שבוע 3:</b> Deploy + הוסף tests + CI pipeline</p>
+          <p><b>שבוע 4:</b> פרויקט שני + תרומת Open Source</p>
+          <p style="margin-top:6px;color:var(--accent)"><b>תוצאה:</b> GitHub שמגייס רוצה לראות 🎯</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-grid" style="margin-bottom:20px">
+      <div class="card">
+        <h3>✅ Portfolio טוב — דוגמה</h3>
+        <div style="font-size:12px;line-height:1.7;color:var(--fg-soft)">
+          <p>📁 <b>my-saas-starter</b> ⭐23 — Next.js + Stripe + Auth</p>
+          <p style="margin-right:16px">README עם screenshots, deployed on Vercel, 45 commits, CI/CD</p>
+          <p>📁 <b>rag-chatbot</b> ⭐12 — LangChain + ChromaDB</p>
+          <p style="margin-right:16px">Live demo, YouTube walkthrough, clean code</p>
+          <p>📁 <b>contributed to langchain</b> — PR #4521 merged</p>
+          <p style="margin-right:16px">Fixed bug in document loader, code review passed</p>
+        </div>
+      </div>
+      <div class="card">
+        <h3>❌ Portfolio גרוע — דוגמה</h3>
+        <div style="font-size:12px;line-height:1.7;color:var(--fg-soft)">
+          <p>📁 <b>todo-app</b> ⭐0 — JavaScript</p>
+          <p style="margin-right:16px;color:var(--f)">No README, 1 commit, copied from tutorial</p>
+          <p>📁 <b>calculator</b> ⭐0 — HTML</p>
+          <p style="margin-right:16px;color:var(--f)">No .gitignore, node_modules committed</p>
+          <p>📁 <b>test123</b> ⭐0 — No description</p>
+          <p style="margin-right:16px;color:var(--f)">Empty repo, last updated 2 years ago</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="text-align:center;padding:24px">
+      <p style="font-size:15px;margin-bottom:12px">🐙 <b>יש לך GitHub? בוא נבדוק מה המצב.</b></p>
+      <button class="btn ai-btn-glow" onclick="document.querySelector('[data-pfsub=github]').click()" style="font-size:14px !important">🔍 סרוק את ה-GitHub שלי</button>
+      <p class="muted" style="margin-top:8px">Claude ינתח את הפרויקטים שלך וידרג אותם כ-portfolio</p>
+    </div>`;
 }
 
 ["pf-category", "pf-difficulty", "pf-q"].forEach(id => {
@@ -1717,6 +1810,64 @@ function renderPFProject(p) {
       </div>
     </div>`;
 }
+
+// ═══════════════ GitHub scan ═══════════════
+document.getElementById("gh-scan-btn").addEventListener("click", async () => {
+  const username = document.getElementById("gh-username").value.trim();
+  if (!username) { toast("הזן username", true); return; }
+  const btn = document.getElementById("gh-scan-btn");
+  const results = document.getElementById("gh-results");
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = "סורק... <span class='spinner'></span>";
+  results.innerHTML = `<div class="ai-loading"><span class="spinner"></span><p>סורק ${username} ב-GitHub...</p><span class="muted">מביא repos + Claude מנתח</span></div>`;
+
+  try {
+    const r = await api("/api/github/scan", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username }),
+    });
+
+    // Show repos grid + analysis
+    const reposHtml = r.repos.length ? `
+      <div class="card" style="margin-bottom:16px">
+        <h3>📦 ${r.repos.length} ריפוזיטוריז ציבוריים (לא forks)</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;margin-top:12px">
+          ${r.repos.map(repo => `
+            <div style="background:var(--bg);border-radius:8px;padding:12px;border:1px solid var(--border)">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                <a href="${escapeAttr(repo.url)}" target="_blank" style="font-weight:600;font-size:13px">${escapeHtml(repo.name)}</a>
+                <span style="font-size:11px;color:var(--muted)">⭐${repo.stars}</span>
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${escapeHtml(repo.description || "—")}</div>
+              <div style="display:flex;gap:4px;flex-wrap:wrap">
+                ${repo.language ? `<span class="skill-chip secondary" style="font-size:10px;padding:1px 6px">${escapeHtml(repo.language)}</span>` : ""}
+                ${(repo.topics || []).slice(0, 3).map(t => `<span class="skill-chip" style="font-size:10px;padding:1px 6px">${escapeHtml(t)}</span>`).join("")}
+              </div>
+            </div>`).join("")}
+        </div>
+      </div>` : "";
+
+    const analysisHtml = r.analysis ? `
+      <div class="card">
+        <div class="modal-body rendered" style="padding:0;max-height:none">${renderMarkdown(r.analysis)}</div>
+      </div>` : "";
+
+    results.innerHTML = reposHtml + analysisHtml;
+    toast(`✅ ${r.repos.length} repos נסרקו ודורגו`);
+  } catch (e) {
+    results.innerHTML = `<div class="empty" style="color:var(--f)">❌ ${escapeHtml(e.message)}</div>`;
+    toast("❌ " + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+});
+
+// Enter key on username input
+document.getElementById("gh-username").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("gh-scan-btn").click();
+});
 
 // ═══════════════ LeetCode page ═══════════════
 let LC_DATA = null;
@@ -1831,6 +1982,505 @@ function renderLCProblem(p, level) {
       <div class="lc-example">${escapeHtml(p.example)}</div>
     </div>`;
 }
+
+// ═══════════════ CV Editor ═══════════════
+let CVE_STATE = { lang: "en", cvId: null, profileId: null, structured: null };
+
+async function loadCVEditor() {
+  if (!ACTIVE_PROFILE) {
+    document.getElementById("cve-content").innerHTML = `<div class="empty">אין פרופיל פעיל. <br><button class="btn primary" style="margin-top:12px" onclick="document.querySelector('[data-tab=profile]').click()">👤 לדף פרופיל</button></div>`;
+    return;
+  }
+
+  // Populate CV selector
+  const sel = document.getElementById("cve-cv-select");
+  sel.innerHTML = "";
+  ACTIVE_PROFILE.cvs.forEach(c => sel.add(new Option(c.label || c.filename, c.id)));
+  sel.value = CVE_STATE.cvId || ACTIVE_PROFILE.cvs[ACTIVE_PROFILE.primary_cv_index || 0].id;
+
+  CVE_STATE.cvId = sel.value;
+  CVE_STATE.profileId = ACTIVE_PROFILE.id;
+
+  await fetchCVEData();
+}
+
+document.getElementById("cve-cv-select").addEventListener("change", async (e) => {
+  CVE_STATE.cvId = e.target.value;
+  await fetchCVEData();
+});
+
+document.querySelectorAll(".cve-lang-btn").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    document.querySelectorAll(".cve-lang-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    CVE_STATE.lang = btn.dataset.lang;
+    await fetchCVEData();
+  });
+});
+
+async function fetchCVEData() {
+  const wrap = document.getElementById("cve-content");
+  wrap.innerHTML = `<div class="ai-loading"><span class="spinner"></span><p>טוען CV...</p><span class="muted">אם זו פעם ראשונה — Claude מחלץ את המבנה (~10-20 שניות)</span></div>`;
+  try {
+    const r = await api(`/api/cv-editor/get?profileId=${encodeURIComponent(CVE_STATE.profileId)}&cvId=${encodeURIComponent(CVE_STATE.cvId)}&lang=${CVE_STATE.lang}`);
+    CVE_STATE.structured = r.structured;
+    document.getElementById("cve-subtitle").textContent =
+      `${r.language === "en" ? "🇬🇧 English" : "🇮🇱 עברית"} · ${r.structured.header.name}`;
+    renderCVEditor();
+    document.getElementById("cve-download-bar").style.display = "flex";
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty">❌ ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+document.getElementById("cve-translate-btn").addEventListener("click", async () => {
+  const target = CVE_STATE.lang === "en" ? "he" : "en";
+  if (!confirm(`לתרגם את ה-CV ל-${target === "en" ? "אנגלית" : "עברית"}?`)) return;
+  const btn = document.getElementById("cve-translate-btn");
+  const orig = btn.textContent;
+  btn.disabled = true; btn.innerHTML = "מתרגם... <span class='spinner'></span>";
+  try {
+    const r = await api("/api/cv-editor/translate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: CVE_STATE.profileId, cvId: CVE_STATE.cvId, toLanguage: target }),
+    });
+    CVE_STATE.lang = target;
+    CVE_STATE.structured = r.structured;
+    document.querySelectorAll(".cve-lang-btn").forEach(b => b.classList.toggle("active", b.dataset.lang === target));
+    renderCVEditor();
+    toast("✅ תורגם");
+  } catch (e) { toast("❌ " + e.message, true); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+});
+
+document.getElementById("cve-save-btn").addEventListener("click", async () => {
+  try {
+    await api("/api/cv-editor/save", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profileId: CVE_STATE.profileId, cvId: CVE_STATE.cvId,
+        language: CVE_STATE.lang, structured: CVE_STATE.structured,
+      }),
+    });
+    toast("💾 נשמר");
+  } catch (e) { toast("❌ " + e.message, true); }
+});
+
+window.cveDownload = async (format) => {
+  try {
+    const r = await fetch("/api/cv-editor/generate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ structured: CVE_STATE.structured, format }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error);
+    const blob = await r.blob();
+    const ext = format;
+    const name = CVE_STATE.structured.header.name || "resume";
+    downloadBlob(blob, `CV-${name}-${CVE_STATE.lang}.${ext}`);
+    toast(`✅ הורד .${ext}`);
+  } catch (e) { toast("❌ " + e.message, true); }
+};
+
+function renderCVEditor() {
+  const s = CVE_STATE.structured;
+  if (!s) return;
+  const isHe = CVE_STATE.lang === "he";
+  const t = isHe ? {
+    summary: "תקציר", experience: "ניסיון תעסוקתי", education: "השכלה",
+    skills: "כישורים", projects: "פרויקטים", certifications: "הסמכות", languages: "שפות",
+    add: "הוסף", company: "חברה", title: "תפקיד", location: "מיקום",
+    start: "התחלה", end: "סיום", description: "תיאור", achievements: "הישגים",
+    technologies: "טכנולוגיות", category: "קטגוריה", skill: "כישור",
+    institution: "מוסד", degree: "תואר", field: "תחום", gpa: "ממוצע", honors: "צל\"ש",
+    project: "פרויקט", url: "קישור", date: "תאריך", cert: "הסמכה",
+    issuer: "מנפיק", language: "שפה", level: "רמה",
+    name: "שם מלא", email: "אימייל", phone: "טלפון",
+  } : {
+    summary: "Summary", experience: "Experience", education: "Education",
+    skills: "Skills", projects: "Projects", certifications: "Certifications", languages: "Languages",
+    add: "Add", company: "Company", title: "Title", location: "Location",
+    start: "Start", end: "End", description: "Description", achievements: "Achievements",
+    technologies: "Technologies", category: "Category", skill: "Skill",
+    institution: "Institution", degree: "Degree", field: "Field", gpa: "GPA", honors: "Honors",
+    project: "Project", url: "URL", date: "Date", cert: "Certification",
+    issuer: "Issuer", language: "Language", level: "Level",
+    name: "Full Name", email: "Email", phone: "Phone",
+  };
+
+  document.getElementById("cve-content").innerHTML = `
+    <!-- Header -->
+    <div class="cve-section">
+      <div class="cve-section-head"><h3>👤 ${t.name}</h3></div>
+      <div class="cve-section-body">
+        <div class="cve-field-row">
+          <div class="cve-field"><label>${t.name}</label><input value="${escapeAttr(s.header.name || '')}" oninput="cveUpdateHeader('name', this.value)" /></div>
+          <div class="cve-field"><label>${t.title}</label><input value="${escapeAttr(s.header.title || '')}" oninput="cveUpdateHeader('title', this.value)" /></div>
+        </div>
+        <div class="cve-field-row-3">
+          <div class="cve-field"><label>${t.email}</label><input value="${escapeAttr(s.header.email || '')}" oninput="cveUpdateHeader('email', this.value)" /></div>
+          <div class="cve-field"><label>${t.phone}</label><input value="${escapeAttr(s.header.phone || '')}" oninput="cveUpdateHeader('phone', this.value)" /></div>
+          <div class="cve-field"><label>${t.location}</label><input value="${escapeAttr(s.header.location || '')}" oninput="cveUpdateHeader('location', this.value)" /></div>
+        </div>
+        <div class="cve-field-row-3">
+          <div class="cve-field"><label>LinkedIn</label><input value="${escapeAttr(s.header.linkedin || '')}" oninput="cveUpdateHeader('linkedin', this.value)" /></div>
+          <div class="cve-field"><label>GitHub</label><input value="${escapeAttr(s.header.github || '')}" oninput="cveUpdateHeader('github', this.value)" /></div>
+          <div class="cve-field"><label>Website</label><input value="${escapeAttr(s.header.website || '')}" oninput="cveUpdateHeader('website', this.value)" /></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary -->
+    <div class="cve-section">
+      <div class="cve-section-head"><h3>📋 ${t.summary}</h3></div>
+      <div class="cve-section-body">
+        <textarea oninput="cveUpdate('summary', this.value)" rows="4" style="width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-family:inherit;font-size:13px">${escapeHtml(s.summary || '')}</textarea>
+      </div>
+    </div>
+
+    <!-- Experience -->
+    <div class="cve-section">
+      <div class="cve-section-head"><h3>💼 ${t.experience}</h3></div>
+      <div class="cve-section-body">
+        ${(s.experience || []).map((e, i) => renderExperience(e, i, t)).join("")}
+        <button class="cve-add-btn" onclick="cveAddExperience()">+ ${t.add} ${t.company}</button>
+      </div>
+    </div>
+
+    <!-- Education -->
+    <div class="cve-section">
+      <div class="cve-section-head"><h3>🎓 ${t.education}</h3></div>
+      <div class="cve-section-body">
+        ${(s.education || []).map((e, i) => renderEducation(e, i, t)).join("")}
+        <button class="cve-add-btn" onclick="cveAddEducation()">+ ${t.add} ${t.institution}</button>
+      </div>
+    </div>
+
+    <!-- Skills -->
+    <div class="cve-section">
+      <div class="cve-section-head"><h3>🛠️ ${t.skills}</h3></div>
+      <div class="cve-section-body">
+        ${(s.skills || []).map((c, i) => renderSkillCat(c, i, t)).join("")}
+        <button class="cve-add-btn" onclick="cveAddSkillCat()">+ ${t.add} ${t.category}</button>
+      </div>
+    </div>
+
+    <!-- Projects -->
+    <div class="cve-section">
+      <div class="cve-section-head"><h3>🚀 ${t.projects}</h3></div>
+      <div class="cve-section-body">
+        ${(s.projects || []).map((p, i) => renderProject(p, i, t)).join("")}
+        <button class="cve-add-btn" onclick="cveAddProject()">+ ${t.add} ${t.project}</button>
+      </div>
+    </div>
+
+    <!-- Certifications -->
+    <div class="cve-section">
+      <div class="cve-section-head"><h3>🏆 ${t.certifications}</h3></div>
+      <div class="cve-section-body">
+        ${(s.certifications || []).map((c, i) => renderCertification(c, i, t)).join("")}
+        <button class="cve-add-btn" onclick="cveAddCert()">+ ${t.add} ${t.cert}</button>
+      </div>
+    </div>
+
+    <!-- Languages -->
+    <div class="cve-section">
+      <div class="cve-section-head"><h3>🌐 ${t.languages}</h3></div>
+      <div class="cve-section-body">
+        ${(s.languages || []).map((l, i) => `
+          <div class="cve-field-row" style="margin-bottom:6px">
+            <div class="cve-field"><input value="${escapeAttr(l.name || '')}" oninput="cveUpdateNested('languages',${i},'name',this.value)" placeholder="${t.language}" /></div>
+            <div class="cve-field" style="display:flex;align-items:center;gap:6px"><input value="${escapeAttr(l.level || '')}" oninput="cveUpdateNested('languages',${i},'level',this.value)" placeholder="${t.level}" style="flex:1" /><button onclick="cveRemoveItem('languages',${i})" style="background:transparent;border:none;color:var(--f);cursor:pointer;font-size:16px">✕</button></div>
+          </div>`).join("")}
+        <button class="cve-add-btn" onclick="cveAddLanguage()">+ ${t.add} ${t.language}</button>
+      </div>
+    </div>`;
+}
+
+function renderExperience(e, i, t) {
+  return `
+    <div class="cve-experience-item">
+      <div class="cve-item-actions"><button onclick="cveRemoveItem('experience',${i})" title="מחק">✕</button></div>
+      <div class="cve-field-row">
+        <div class="cve-field"><label>${t.title}</label><input value="${escapeAttr(e.title || '')}" oninput="cveUpdateNested('experience',${i},'title',this.value)" /></div>
+        <div class="cve-field"><label>${t.company}</label><input value="${escapeAttr(e.company || '')}" oninput="cveUpdateNested('experience',${i},'company',this.value)" /></div>
+      </div>
+      <div class="cve-field-row-3">
+        <div class="cve-field"><label>${t.location}</label><input value="${escapeAttr(e.location || '')}" oninput="cveUpdateNested('experience',${i},'location',this.value)" /></div>
+        <div class="cve-field"><label>${t.start}</label><input value="${escapeAttr(e.start_date || '')}" oninput="cveUpdateNested('experience',${i},'start_date',this.value)" /></div>
+        <div class="cve-field"><label>${t.end}</label><input value="${escapeAttr(e.end_date || '')}" oninput="cveUpdateNested('experience',${i},'end_date',this.value)" /></div>
+      </div>
+      <div class="cve-field"><label>${t.description}</label><textarea oninput="cveUpdateNested('experience',${i},'description',this.value)" rows="2">${escapeHtml(e.description || '')}</textarea></div>
+      <div class="cve-field">
+        <label>${t.achievements}</label>
+        <div class="cve-bullet-list">
+          ${(e.achievements || []).map((a, j) => `
+            <div class="cve-bullet-row">
+              <input value="${escapeAttr(a)}" oninput="cveUpdateBullet('experience',${i},'achievements',${j},this.value)" />
+              <button onclick="cveRemoveBullet('experience',${i},'achievements',${j})">✕</button>
+            </div>`).join("")}
+          <button class="cve-add-btn" style="font-size:11px;padding:5px" onclick="cveAddBullet('experience',${i},'achievements')">+ ${t.add}</button>
+        </div>
+      </div>
+      <div class="cve-field"><label>${t.technologies}</label><input value="${escapeAttr((e.technologies || []).join(', '))}" oninput="cveUpdateCsv('experience',${i},'technologies',this.value)" placeholder="React, Node.js, AWS" /></div>
+    </div>`;
+}
+
+function renderEducation(e, i, t) {
+  return `
+    <div class="cve-edu-item">
+      <div class="cve-item-actions"><button onclick="cveRemoveItem('education',${i})">✕</button></div>
+      <div class="cve-field-row">
+        <div class="cve-field"><label>${t.institution}</label><input value="${escapeAttr(e.institution || '')}" oninput="cveUpdateNested('education',${i},'institution',this.value)" /></div>
+        <div class="cve-field"><label>${t.degree}</label><input value="${escapeAttr(e.degree || '')}" oninput="cveUpdateNested('education',${i},'degree',this.value)" /></div>
+      </div>
+      <div class="cve-field-row-3">
+        <div class="cve-field"><label>${t.field}</label><input value="${escapeAttr(e.field || '')}" oninput="cveUpdateNested('education',${i},'field',this.value)" /></div>
+        <div class="cve-field"><label>${t.start}</label><input value="${escapeAttr(e.start_date || '')}" oninput="cveUpdateNested('education',${i},'start_date',this.value)" /></div>
+        <div class="cve-field"><label>${t.end}</label><input value="${escapeAttr(e.end_date || '')}" oninput="cveUpdateNested('education',${i},'end_date',this.value)" /></div>
+      </div>
+      <div class="cve-field-row">
+        <div class="cve-field"><label>${t.gpa}</label><input value="${escapeAttr(e.gpa || '')}" oninput="cveUpdateNested('education',${i},'gpa',this.value)" /></div>
+        <div class="cve-field"><label>${t.honors}</label><input value="${escapeAttr(e.honors || '')}" oninput="cveUpdateNested('education',${i},'honors',this.value)" /></div>
+      </div>
+    </div>`;
+}
+
+function renderSkillCat(c, i, t) {
+  return `
+    <div class="cve-skill-cat">
+      <div class="cve-item-actions"><button onclick="cveRemoveItem('skills',${i})">✕</button></div>
+      <input value="${escapeAttr(c.category || '')}" oninput="cveUpdateNested('skills',${i},'category',this.value)" placeholder="${t.category}" style="background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-weight:600;font-size:13px;width:200px" />
+      <div class="cve-skill-tags">
+        ${(c.skills || []).map((s, j) => `
+          <span class="cve-skill-tag">${escapeHtml(s)}<button onclick="cveRemoveBullet('skills',${i},'skills',${j})">✕</button></span>
+        `).join("")}
+      </div>
+      <input placeholder="הוסף כישור + Enter" onkeydown="if(event.key==='Enter'){event.preventDefault();cveAddSkill(${i},this.value);this.value='';}" style="margin-top:8px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px;width:100%" />
+    </div>`;
+}
+
+function renderProject(p, i, t) {
+  return `
+    <div class="cve-project-item">
+      <div class="cve-item-actions"><button onclick="cveRemoveItem('projects',${i})">✕</button></div>
+      <div class="cve-field-row">
+        <div class="cve-field"><label>${t.project}</label><input value="${escapeAttr(p.name || '')}" oninput="cveUpdateNested('projects',${i},'name',this.value)" /></div>
+        <div class="cve-field"><label>${t.date}</label><input value="${escapeAttr(p.date || '')}" oninput="cveUpdateNested('projects',${i},'date',this.value)" /></div>
+      </div>
+      <div class="cve-field"><label>${t.description}</label><textarea oninput="cveUpdateNested('projects',${i},'description',this.value)" rows="2">${escapeHtml(p.description || '')}</textarea></div>
+      <div class="cve-field-row">
+        <div class="cve-field"><label>${t.url}</label><input value="${escapeAttr(p.url || '')}" oninput="cveUpdateNested('projects',${i},'url',this.value)" /></div>
+        <div class="cve-field"><label>${t.technologies}</label><input value="${escapeAttr((p.technologies || []).join(', '))}" oninput="cveUpdateCsv('projects',${i},'technologies',this.value)" /></div>
+      </div>
+    </div>`;
+}
+
+function renderCertification(c, i, t) {
+  return `
+    <div class="cve-cert-item">
+      <div class="cve-item-actions"><button onclick="cveRemoveItem('certifications',${i})">✕</button></div>
+      <div class="cve-field-row-3">
+        <div class="cve-field"><label>${t.cert}</label><input value="${escapeAttr(c.name || '')}" oninput="cveUpdateNested('certifications',${i},'name',this.value)" /></div>
+        <div class="cve-field"><label>${t.issuer}</label><input value="${escapeAttr(c.issuer || '')}" oninput="cveUpdateNested('certifications',${i},'issuer',this.value)" /></div>
+        <div class="cve-field"><label>${t.date}</label><input value="${escapeAttr(c.date || '')}" oninput="cveUpdateNested('certifications',${i},'date',this.value)" /></div>
+      </div>
+      <div class="cve-field"><label>${t.url}</label><input value="${escapeAttr(c.url || '')}" oninput="cveUpdateNested('certifications',${i},'url',this.value)" /></div>
+    </div>`;
+}
+
+// ── State updaters ──
+window.cveUpdateHeader = (key, value) => { CVE_STATE.structured.header[key] = value; };
+window.cveUpdate = (key, value) => { CVE_STATE.structured[key] = value; };
+window.cveUpdateNested = (section, idx, key, value) => {
+  if (!CVE_STATE.structured[section][idx]) return;
+  CVE_STATE.structured[section][idx][key] = value;
+};
+window.cveUpdateCsv = (section, idx, key, value) => {
+  CVE_STATE.structured[section][idx][key] = value.split(",").map(s => s.trim()).filter(Boolean);
+};
+window.cveUpdateBullet = (section, idx, listKey, jdx, value) => {
+  CVE_STATE.structured[section][idx][listKey][jdx] = value;
+};
+window.cveAddBullet = (section, idx, listKey) => {
+  if (!CVE_STATE.structured[section][idx][listKey]) CVE_STATE.structured[section][idx][listKey] = [];
+  CVE_STATE.structured[section][idx][listKey].push("");
+  renderCVEditor();
+};
+window.cveRemoveBullet = (section, idx, listKey, jdx) => {
+  CVE_STATE.structured[section][idx][listKey].splice(jdx, 1);
+  renderCVEditor();
+};
+window.cveRemoveItem = (section, idx) => {
+  CVE_STATE.structured[section].splice(idx, 1);
+  renderCVEditor();
+};
+window.cveAddExperience = () => {
+  if (!CVE_STATE.structured.experience) CVE_STATE.structured.experience = [];
+  CVE_STATE.structured.experience.push({ company: "", title: "", start_date: "", end_date: "", achievements: [] });
+  renderCVEditor();
+};
+window.cveAddEducation = () => {
+  if (!CVE_STATE.structured.education) CVE_STATE.structured.education = [];
+  CVE_STATE.structured.education.push({ institution: "", degree: "", start_date: "", end_date: "" });
+  renderCVEditor();
+};
+window.cveAddSkillCat = () => {
+  if (!CVE_STATE.structured.skills) CVE_STATE.structured.skills = [];
+  CVE_STATE.structured.skills.push({ category: "", skills: [] });
+  renderCVEditor();
+};
+window.cveAddSkill = (catIdx, value) => {
+  const v = value.trim();
+  if (!v) return;
+  CVE_STATE.structured.skills[catIdx].skills.push(v);
+  renderCVEditor();
+};
+window.cveAddProject = () => {
+  if (!CVE_STATE.structured.projects) CVE_STATE.structured.projects = [];
+  CVE_STATE.structured.projects.push({ name: "", description: "" });
+  renderCVEditor();
+};
+window.cveAddCert = () => {
+  if (!CVE_STATE.structured.certifications) CVE_STATE.structured.certifications = [];
+  CVE_STATE.structured.certifications.push({ name: "", issuer: "", date: "" });
+  renderCVEditor();
+};
+window.cveAddLanguage = () => {
+  if (!CVE_STATE.structured.languages) CVE_STATE.structured.languages = [];
+  CVE_STATE.structured.languages.push({ name: "", level: "" });
+  renderCVEditor();
+};
+
+// ═══════════════ Mentor page ═══════════════
+let MENTOR_STATE = null;
+
+async function loadMentorPage() {
+  try {
+    MENTOR_STATE = await api("/api/mentor");
+    renderMentorGoal();
+    renderMentorChat();
+    renderMentorStatus();
+  } catch (e) { toast("❌ " + e.message, true); }
+}
+
+function renderMentorGoal() {
+  const g = MENTOR_STATE?.goal;
+  const wrap = document.getElementById("mentor-goal-display");
+  if (!g) {
+    wrap.innerHTML = `<div class="goal-empty">עדיין לא הוגדרה מטרה. <br><button class="btn small primary" onclick="document.getElementById('edit-goal-btn').click()" style="margin-top:8px">🎯 הגדר עכשיו</button></div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <div class="goal-card">
+      <div class="goal-field"><b>תפקיד:</b> ${escapeHtml(g.target_role)}</div>
+      ${g.target_salary_monthly ? `<div class="goal-field"><b>שכר:</b> ₪${fmtNumber(g.target_salary_monthly)}/חודש</div>` : ""}
+      <div class="goal-field"><b>לוז:</b> ${g.target_timeline_months} חודשים</div>
+      ${g.commitments_per_week ? `<div class="goal-field"><b>שבועי:</b> ${escapeHtml(g.commitments_per_week)}</div>` : ""}
+      ${g.current_obstacles ? `<div class="goal-field"><b>מכשולים:</b> ${escapeHtml(g.current_obstacles)}</div>` : ""}
+      ${g.why ? `<div class="goal-field" style="color:var(--c)"><b>למה:</b> ${escapeHtml(g.why)}</div>` : ""}
+    </div>`;
+}
+
+function renderMentorStatus() {
+  const wrap = document.getElementById("mentor-status");
+  const t = TRACKED || [];
+  const byStatus = {};
+  for (const tr of t) byStatus[tr.status] = (byStatus[tr.status] || 0) + 1;
+  const labels = { interested: "👀", applied: "📤", interview: "🎤", offer: "🎉", rejected: "❌" };
+  wrap.innerHTML = Object.keys(labels).map(k =>
+    `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px"><span>${labels[k]} ${k}</span><b>${byStatus[k] || 0}</b></div>`
+  ).join("");
+}
+
+function renderMentorChat() {
+  const chat = document.getElementById("mentor-chat");
+  chat.innerHTML = (MENTOR_STATE?.conversations || []).map(m => `
+    <div class="chat-msg ${m.role}">${m.role === "assistant" ? renderMarkdown(m.content) : escapeHtml(m.content).replace(/\n/g, "<br>")}</div>
+  `).join("");
+  chat.scrollTop = chat.scrollHeight;
+}
+
+window.mentorSend = async (predefinedMessage) => {
+  const input = document.getElementById("mentor-input-field");
+  const message = predefinedMessage || input.value.trim();
+  if (!message) return;
+  if (!predefinedMessage) input.value = "";
+
+  const chat = document.getElementById("mentor-chat");
+  chat.insertAdjacentHTML("beforeend", `<div class="chat-msg user">${escapeHtml(message).replace(/\n/g, "<br>")}</div>`);
+  const thinking = document.createElement("div");
+  thinking.className = "chat-msg thinking";
+  thinking.textContent = "המנטור חושב...";
+  chat.appendChild(thinking);
+  chat.scrollTop = chat.scrollHeight;
+
+  try {
+    const r = await api("/api/mentor/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    });
+    thinking.remove();
+    chat.insertAdjacentHTML("beforeend", `<div class="chat-msg assistant">${renderMarkdown(r.reply)}</div>`);
+    chat.scrollTop = chat.scrollHeight;
+    // Reload state
+    MENTOR_STATE = await api("/api/mentor");
+  } catch (e) {
+    thinking.remove();
+    chat.insertAdjacentHTML("beforeend", `<div class="chat-msg assistant" style="border-color:var(--f);color:var(--f)">❌ ${escapeHtml(e.message)}</div>`);
+    toast("❌ " + e.message, true);
+  }
+};
+
+document.getElementById("mentor-send-btn").addEventListener("click", () => mentorSend());
+document.getElementById("mentor-input-field").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); mentorSend(); }
+});
+
+document.getElementById("mentor-clear-btn").addEventListener("click", async () => {
+  if (!confirm("לנקות את היסטוריית השיחה?")) return;
+  await api("/api/mentor/clear", { method: "POST" });
+  toast("🗑️ שיחה נוקתה");
+  loadMentorPage();
+});
+
+// Goal modal
+document.getElementById("edit-goal-btn").addEventListener("click", () => {
+  const g = MENTOR_STATE?.goal;
+  if (g) {
+    document.getElementById("goal-role").value = g.target_role || "";
+    document.getElementById("goal-salary").value = g.target_salary_monthly || "";
+    document.getElementById("goal-timeline").value = String(g.target_timeline_months || 6);
+    document.getElementById("goal-obstacles").value = g.current_obstacles || "";
+    document.getElementById("goal-commitments").value = g.commitments_per_week || "";
+    document.getElementById("goal-why").value = g.why || "";
+  }
+  document.getElementById("goal-modal-backdrop").classList.add("open");
+});
+document.getElementById("goal-close").addEventListener("click", () =>
+  document.getElementById("goal-modal-backdrop").classList.remove("open"));
+document.getElementById("goal-modal-backdrop").addEventListener("click", (e) => {
+  if (e.target.id === "goal-modal-backdrop") e.target.classList.remove("open");
+});
+document.getElementById("goal-save").addEventListener("click", async () => {
+  const goal = {
+    target_role: document.getElementById("goal-role").value.trim(),
+    target_salary_monthly: Number(document.getElementById("goal-salary").value) || undefined,
+    target_timeline_months: Number(document.getElementById("goal-timeline").value),
+    current_obstacles: document.getElementById("goal-obstacles").value.trim(),
+    commitments_per_week: document.getElementById("goal-commitments").value.trim(),
+    why: document.getElementById("goal-why").value.trim(),
+  };
+  if (!goal.target_role) { toast("חסר תפקיד יעד", true); return; }
+  try {
+    await api("/api/mentor/goal", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(goal),
+    });
+    toast("🎯 מטרה נשמרה");
+    document.getElementById("goal-modal-backdrop").classList.remove("open");
+    loadMentorPage();
+  } catch (e) { toast("❌ " + e.message, true); }
+});
 
 // ═══════════════ Init ═══════════════
 (async () => {

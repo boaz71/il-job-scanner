@@ -9,12 +9,84 @@ const PROFILES_DIR = resolve(ROOT, "data/profiles");
 const ACTIVE_FILE = resolve(PROFILES_DIR, "_active.json");
 
 // ── Multi-CV support ──
+export interface StructuredCV {
+  language: "en" | "he";
+  header: {
+    name: string;
+    title: string;
+    email?: string;
+    phone?: string;
+    location?: string;
+    linkedin?: string;
+    github?: string;
+    website?: string;
+  };
+  summary?: string;
+  experience: ExperienceItem[];
+  education: EducationItem[];
+  skills: SkillCategory[];
+  projects?: ProjectItem[];
+  certifications?: CertificationItem[];
+  languages?: LanguageItem[];
+}
+
+export interface ExperienceItem {
+  company: string;
+  title: string;
+  location?: string;
+  start_date: string;
+  end_date: string;
+  description?: string;
+  achievements: string[];
+  technologies?: string[];
+}
+
+export interface EducationItem {
+  institution: string;
+  degree: string;
+  field?: string;
+  location?: string;
+  start_date: string;
+  end_date: string;
+  gpa?: string;
+  honors?: string;
+}
+
+export interface SkillCategory {
+  category: string;
+  skills: string[];
+}
+
+export interface ProjectItem {
+  name: string;
+  description: string;
+  url?: string;
+  technologies?: string[];
+  date?: string;
+}
+
+export interface CertificationItem {
+  name: string;
+  issuer: string;
+  date: string;
+  url?: string;
+}
+
+export interface LanguageItem {
+  name: string;
+  level: string;
+}
+
 export interface ProfileCV {
   id: string;
   filename: string;
   text: string;
-  label: string;          // e.g. "קו\"ח עברית", "English CV", "Short version"
+  label: string;
   added_at: string;
+  structured?: {
+    en?: StructuredCV;
+    he?: StructuredCV;
+  };
 }
 
 export interface StoredProfile {

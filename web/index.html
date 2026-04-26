@@ -15,7 +15,9 @@
   </div>
   <nav class="tabs">
     <button class="tab active" data-tab="profile">👤 פרופיל</button>
+    <button class="tab" data-tab="cveditor">📝 עורך CV</button>
     <button class="tab" data-tab="dashboard">📊 דאשבורד</button>
+    <button class="tab" data-tab="mentor">🧭 מנטור</button>
     <span class="tab-divider"></span>
     <button class="tab" data-tab="jobs">💼 משרות</button>
     <button class="tab" data-tab="tracker">🎯 מעקב</button>
@@ -139,6 +141,132 @@
   </div>
   <div id="profile-content"><div class="empty">טוען...</div></div>
 </section>
+
+<!-- ═══════════════ CV EDITOR TAB ═══════════════ -->
+<section class="page" id="page-cveditor">
+  <div class="page-head">
+    <div class="page-title">
+      <h2>📝 עורך CV</h2>
+      <span class="muted" id="cve-subtitle">טוען...</span>
+    </div>
+    <div class="page-actions">
+      <div class="cve-lang-toggle" id="cve-lang-toggle">
+        <button class="cve-lang-btn active" data-lang="en">🇬🇧 English</button>
+        <button class="cve-lang-btn" data-lang="he">🇮🇱 עברית</button>
+      </div>
+      <button class="btn" id="cve-translate-btn">🌐 תרגם</button>
+      <select id="cve-cv-select" style="background:var(--bg);color:var(--fg);border:1px solid var(--border);padding:6px 10px;border-radius:6px;min-width:180px"></select>
+    </div>
+  </div>
+
+  <div id="cve-content"><div class="empty">טוען...</div></div>
+
+  <div class="cve-download-bar" id="cve-download-bar" style="display:none">
+    <span><b>הורד את הקובץ:</b></span>
+    <button class="btn" onclick="cveDownload('md')">💾 .MD</button>
+    <button class="btn" onclick="cveDownload('docx')">📄 .DOCX</button>
+    <button class="btn primary" onclick="cveDownload('pdf')">📕 .PDF</button>
+    <button class="btn" id="cve-save-btn">💾 שמור שינויים</button>
+  </div>
+</section>
+
+<!-- ═══════════════ MENTOR TAB ═══════════════ -->
+<section class="page" id="page-mentor">
+  <div class="ai-hero" style="margin-bottom:24px">
+    <div class="ai-hero-bg" style="background: linear-gradient(135deg, #2d1b3d 0%, #1a2840 40%, #0d3528 70%, #2d1b3d 100%)"></div>
+    <div class="ai-hero-content" style="padding:36px 32px">
+      <div class="ai-hero-icon" style="filter:drop-shadow(0 0 20px rgba(168,85,247,0.5))">🧭</div>
+      <h2 style="background:linear-gradient(135deg,#f3e8ff,#c4b5fd,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">המנטור האישי שלך</h2>
+      <p>שיחה עם AI שמכיר את הפרופיל, המעקב, והמטרות שלך — ויעזור לך להתקדם בפועל</p>
+    </div>
+  </div>
+
+  <div class="mentor-layout">
+    <!-- Left: Goal panel -->
+    <div class="mentor-goal">
+      <div class="card">
+        <h3>🎯 המטרה שלך</h3>
+        <div id="mentor-goal-display"></div>
+        <button class="btn small" id="edit-goal-btn" style="margin-top:10px">✏️ ערוך מטרה</button>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h3>📊 סטטוס</h3>
+        <div id="mentor-status" class="muted">טוען...</div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h3>💡 רעיונות לשיחה</h3>
+        <div id="mentor-suggestions">
+          <button class="mentor-suggestion" onclick="mentorSend('עברתי שבוע בלי להגיש כלום, מה לעשות?')">איך לחזור לפעולה</button>
+          <button class="mentor-suggestion" onclick="mentorSend('סקור את ההתקדמות שלי החודש')">סקור התקדמות</button>
+          <button class="mentor-suggestion" onclick="mentorSend('מה לתעדף השבוע?')">תעדוף שבועי</button>
+          <button class="mentor-suggestion" onclick="mentorSend('אני מתלבט בין 2 משרות, איך להחליט?')">החלטה בין משרות</button>
+          <button class="mentor-suggestion" onclick="mentorSend('הוצאתי 50 הגשות וקיבלתי 0 ראיונות. מה לא בסדר?')">בעיה בהמרה</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Chat -->
+    <div class="mentor-chat-wrap">
+      <div class="card mentor-chat-card">
+        <div class="mentor-chat-head">
+          <h3 style="margin:0">💬 שיחה</h3>
+          <button class="btn small" id="mentor-clear-btn">🗑️ נקה שיחה</button>
+        </div>
+        <div class="mentor-chat" id="mentor-chat"></div>
+        <div class="mentor-input">
+          <textarea id="mentor-input-field" placeholder="כתוב למנטור... (Shift+Enter לשורה חדשה)" rows="2"></textarea>
+          <button class="btn primary" id="mentor-send-btn">שלח ←</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Goal modal -->
+<div class="modal-backdrop" id="goal-modal-backdrop">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-head">
+      <h3>🎯 הגדר את המטרה שלך</h3>
+      <button class="icon-btn" id="goal-close">✕</button>
+    </div>
+    <div class="modal-body" style="font-family:inherit;white-space:normal;padding:24px">
+      <div class="form-row">
+        <label style="display:block;margin-bottom:6px"><b>תפקיד יעד</b></label>
+        <input type="text" id="goal-role" placeholder="Senior AI Engineer at FAANG" />
+      </div>
+      <div class="form-row">
+        <label style="display:block;margin-bottom:6px"><b>שכר יעד (₪/חודש)</b></label>
+        <input type="number" id="goal-salary" placeholder="40000" />
+      </div>
+      <div class="form-row">
+        <label style="display:block;margin-bottom:6px"><b>לוז (חודשים)</b></label>
+        <select id="goal-timeline">
+          <option value="3">3 חודשים — דחוף</option>
+          <option value="6" selected>6 חודשים — סביר</option>
+          <option value="12">12 חודשים — בנייה</option>
+          <option value="24">24 חודשים — מסע ארוך</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label style="display:block;margin-bottom:6px"><b>מכשולים נוכחיים</b></label>
+        <textarea id="goal-obstacles" rows="2" placeholder="חסר ניסיון ב-X, אין פורטפוליו, הראיונות לא מצליחים..." style="width:100%"></textarea>
+      </div>
+      <div class="form-row">
+        <label style="display:block;margin-bottom:6px"><b>מחויבות שבועית</b></label>
+        <input type="text" id="goal-commitments" placeholder="10 שעות לימוד, 5 הגשות, 1 פרויקט בחודש" />
+      </div>
+      <div class="form-row">
+        <label style="display:block;margin-bottom:6px"><b>למה זה חשוב לך?</b></label>
+        <textarea id="goal-why" rows="2" placeholder="כדי לאפשר לעצמי X, להגיע ל-Y..." style="width:100%"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn primary" id="goal-save">💾 שמור מטרה</button>
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════ HISTORY TAB ═══════════════ -->
 <section class="page" id="page-history">
@@ -300,19 +428,42 @@
   </div>
 
   <div style="padding:24px;max-width:1200px;margin:0 auto">
-    <div class="filters" style="margin-bottom:16px">
-      <select id="pf-category"><option value="">כל הקטגוריות</option></select>
-      <select id="pf-difficulty">
-        <option value="">כל הרמות</option>
-        <option value="easy">🟢 קל (1-2 שבועות)</option>
-        <option value="medium">🟡 בינוני (2-3 שבועות)</option>
-        <option value="hard">🔴 מאתגר (3-4 שבועות)</option>
-      </select>
-      <input id="pf-q" placeholder="🔍 חיפוש..." />
+    <div class="sub-tabs" style="margin-bottom:16px">
+      <button class="sub-tab active" data-pfsub="overview">📖 מה זה Portfolio?</button>
+      <button class="sub-tab" data-pfsub="ideas">💡 רעיונות לפרויקטים</button>
+      <button class="sub-tab" data-pfsub="github">🐙 סריקת GitHub שלי</button>
     </div>
 
-    <div id="pf-tips" style="margin-bottom:20px"></div>
-    <div id="pf-list"></div>
+    <div id="pf-sub-overview">
+      <div id="pf-overview-content"></div>
+    </div>
+
+    <div id="pf-sub-ideas" style="display:none">
+      <div class="filters" style="margin-bottom:16px">
+        <select id="pf-category"><option value="">כל הקטגוריות</option></select>
+        <select id="pf-difficulty">
+          <option value="">כל הרמות</option>
+          <option value="easy">🟢 קל (1-2 שבועות)</option>
+          <option value="medium">🟡 בינוני (2-3 שבועות)</option>
+          <option value="hard">🔴 מאתגר (3-4 שבועות)</option>
+        </select>
+        <input id="pf-q" placeholder="🔍 חיפוש..." />
+      </div>
+      <div id="pf-tips" style="margin-bottom:20px"></div>
+      <div id="pf-list"></div>
+    </div>
+
+    <div id="pf-sub-github" style="display:none">
+      <div class="card" style="margin-bottom:16px">
+        <h3>🐙 חבר את GitHub שלך</h3>
+        <p class="muted" style="margin-bottom:12px">הזן את שם המשתמש שלך ב-GitHub — הסקאנר יסרוק את הריפוזיטוריז הציבוריים שלך ו-Claude ידרג אותם כ-portfolio.</p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="gh-username" placeholder="github username" style="background:var(--bg);color:var(--fg);border:1px solid var(--border);padding:10px 14px;border-radius:8px;min-width:220px;font-size:14px" />
+          <button class="btn ai-btn-glow" id="gh-scan-btn" style="padding:10px 20px !important;font-size:14px !important">🔍 סרוק ודרג</button>
+        </div>
+      </div>
+      <div id="gh-results"></div>
+    </div>
   </div>
 </section>
 
