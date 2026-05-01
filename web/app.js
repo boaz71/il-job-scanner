@@ -2107,101 +2107,153 @@ function renderCVEditor() {
     name: "Full Name", email: "Email", phone: "Phone",
   };
 
+  const sections = [
+    { id: "header", icon: "👤", color: "blue", title: t.name, count: null },
+    { id: "summary", icon: "📋", color: "cyan", title: t.summary, count: null },
+    { id: "experience", icon: "💼", color: "green", title: t.experience, count: (s.experience || []).length },
+    { id: "education", icon: "🎓", color: "purple", title: t.education, count: (s.education || []).length },
+    { id: "skills", icon: "🛠️", color: "orange", title: t.skills, count: (s.skills || []).length },
+    { id: "projects", icon: "🚀", color: "pink", title: t.projects, count: (s.projects || []).length },
+    { id: "certifications", icon: "🏆", color: "gold", title: t.certifications, count: (s.certifications || []).length },
+    { id: "languages", icon: "🌐", color: "teal", title: t.languages, count: (s.languages || []).length },
+  ];
+
+  const sidebarHtml = `<div class="cve-sidebar">
+    ${sections.map(sec => `
+      <div class="cve-nav-item" onclick="cveScrollTo('${sec.id}')" data-nav="${sec.id}">
+        <span class="cve-nav-icon">${sec.icon}</span>
+        <span>${escapeHtml(sec.title)}</span>
+        ${sec.count !== null ? `<span class="cve-nav-count">${sec.count}</span>` : ""}
+      </div>`).join("")}
+  </div>`;
+
+  function sectionHead(sec) {
+    return `<div class="cve-section-head">
+      <h3><span class="cve-icon-wrap">${sec.icon}</span> ${escapeHtml(sec.title)}</h3>
+    </div>`;
+  }
+
   document.getElementById("cve-content").innerHTML = `
-    <!-- Header -->
-    <div class="cve-section">
-      <div class="cve-section-head"><h3>👤 ${t.name}</h3></div>
-      <div class="cve-section-body">
-        <div class="cve-field-row">
-          <div class="cve-field"><label>${t.name}</label><input value="${escapeAttr(s.header.name || '')}" oninput="cveUpdateHeader('name', this.value)" /></div>
-          <div class="cve-field"><label>${t.title}</label><input value="${escapeAttr(s.header.title || '')}" oninput="cveUpdateHeader('title', this.value)" /></div>
+    <div class="cve-layout">
+      ${sidebarHtml}
+      <div class="cve-main">
+        <!-- Header -->
+        <div class="cve-section" data-color="blue" id="cve-sec-header">
+          ${sectionHead(sections[0])}
+          <div class="cve-section-body">
+            <div class="cve-field-row">
+              <div class="cve-field"><label>${t.name}</label><input value="${escapeAttr(s.header.name || '')}" oninput="cveUpdateHeader('name', this.value)" /></div>
+              <div class="cve-field"><label>${t.title}</label><input value="${escapeAttr(s.header.title || '')}" oninput="cveUpdateHeader('title', this.value)" /></div>
+            </div>
+            <div class="cve-field-row-3">
+              <div class="cve-field"><label>${t.email}</label><input value="${escapeAttr(s.header.email || '')}" oninput="cveUpdateHeader('email', this.value)" /></div>
+              <div class="cve-field"><label>${t.phone}</label><input value="${escapeAttr(s.header.phone || '')}" oninput="cveUpdateHeader('phone', this.value)" /></div>
+              <div class="cve-field"><label>${t.location}</label><input value="${escapeAttr(s.header.location || '')}" oninput="cveUpdateHeader('location', this.value)" /></div>
+            </div>
+            <div class="cve-field-row-3">
+              <div class="cve-field"><label>LinkedIn</label><input value="${escapeAttr(s.header.linkedin || '')}" oninput="cveUpdateHeader('linkedin', this.value)" /></div>
+              <div class="cve-field"><label>GitHub</label><input value="${escapeAttr(s.header.github || '')}" oninput="cveUpdateHeader('github', this.value)" /></div>
+              <div class="cve-field"><label>Website</label><input value="${escapeAttr(s.header.website || '')}" oninput="cveUpdateHeader('website', this.value)" /></div>
+            </div>
+          </div>
         </div>
-        <div class="cve-field-row-3">
-          <div class="cve-field"><label>${t.email}</label><input value="${escapeAttr(s.header.email || '')}" oninput="cveUpdateHeader('email', this.value)" /></div>
-          <div class="cve-field"><label>${t.phone}</label><input value="${escapeAttr(s.header.phone || '')}" oninput="cveUpdateHeader('phone', this.value)" /></div>
-          <div class="cve-field"><label>${t.location}</label><input value="${escapeAttr(s.header.location || '')}" oninput="cveUpdateHeader('location', this.value)" /></div>
+
+        <!-- Summary -->
+        <div class="cve-section" data-color="cyan" id="cve-sec-summary">
+          ${sectionHead(sections[1])}
+          <div class="cve-section-body">
+            <textarea oninput="cveUpdate('summary', this.value)" rows="4" style="width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-family:inherit;font-size:13px;line-height:1.6">${escapeHtml(s.summary || '')}</textarea>
+          </div>
         </div>
-        <div class="cve-field-row-3">
-          <div class="cve-field"><label>LinkedIn</label><input value="${escapeAttr(s.header.linkedin || '')}" oninput="cveUpdateHeader('linkedin', this.value)" /></div>
-          <div class="cve-field"><label>GitHub</label><input value="${escapeAttr(s.header.github || '')}" oninput="cveUpdateHeader('github', this.value)" /></div>
-          <div class="cve-field"><label>Website</label><input value="${escapeAttr(s.header.website || '')}" oninput="cveUpdateHeader('website', this.value)" /></div>
+
+        <!-- Experience -->
+        <div class="cve-section" data-color="green" id="cve-sec-experience">
+          ${sectionHead(sections[2])}
+          <div class="cve-section-body">
+            ${(s.experience || []).map((e, i) => renderExperience(e, i, t)).join("")}
+            <button class="cve-add-btn" onclick="cveAddExperience()">+ ${t.add} ${t.company}</button>
+          </div>
         </div>
-      </div>
-    </div>
 
-    <!-- Summary -->
-    <div class="cve-section">
-      <div class="cve-section-head"><h3>📋 ${t.summary}</h3></div>
-      <div class="cve-section-body">
-        <textarea oninput="cveUpdate('summary', this.value)" rows="4" style="width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-family:inherit;font-size:13px">${escapeHtml(s.summary || '')}</textarea>
-      </div>
-    </div>
+        <!-- Education -->
+        <div class="cve-section" data-color="purple" id="cve-sec-education">
+          ${sectionHead(sections[3])}
+          <div class="cve-section-body">
+            ${(s.education || []).map((e, i) => renderEducation(e, i, t)).join("")}
+            <button class="cve-add-btn" onclick="cveAddEducation()">+ ${t.add} ${t.institution}</button>
+          </div>
+        </div>
 
-    <!-- Experience -->
-    <div class="cve-section">
-      <div class="cve-section-head"><h3>💼 ${t.experience}</h3></div>
-      <div class="cve-section-body">
-        ${(s.experience || []).map((e, i) => renderExperience(e, i, t)).join("")}
-        <button class="cve-add-btn" onclick="cveAddExperience()">+ ${t.add} ${t.company}</button>
-      </div>
-    </div>
+        <!-- Skills -->
+        <div class="cve-section" data-color="orange" id="cve-sec-skills">
+          ${sectionHead(sections[4])}
+          <div class="cve-section-body">
+            ${(s.skills || []).map((c, i) => renderSkillCat(c, i, t)).join("")}
+            <button class="cve-add-btn" onclick="cveAddSkillCat()">+ ${t.add} ${t.category}</button>
+          </div>
+        </div>
 
-    <!-- Education -->
-    <div class="cve-section">
-      <div class="cve-section-head"><h3>🎓 ${t.education}</h3></div>
-      <div class="cve-section-body">
-        ${(s.education || []).map((e, i) => renderEducation(e, i, t)).join("")}
-        <button class="cve-add-btn" onclick="cveAddEducation()">+ ${t.add} ${t.institution}</button>
-      </div>
-    </div>
+        <!-- Projects -->
+        <div class="cve-section" data-color="pink" id="cve-sec-projects">
+          ${sectionHead(sections[5])}
+          <div class="cve-section-body">
+            ${(s.projects || []).map((p, i) => renderProject(p, i, t)).join("")}
+            <button class="cve-add-btn" onclick="cveAddProject()">+ ${t.add} ${t.project}</button>
+          </div>
+        </div>
 
-    <!-- Skills -->
-    <div class="cve-section">
-      <div class="cve-section-head"><h3>🛠️ ${t.skills}</h3></div>
-      <div class="cve-section-body">
-        ${(s.skills || []).map((c, i) => renderSkillCat(c, i, t)).join("")}
-        <button class="cve-add-btn" onclick="cveAddSkillCat()">+ ${t.add} ${t.category}</button>
-      </div>
-    </div>
+        <!-- Certifications -->
+        <div class="cve-section" data-color="gold" id="cve-sec-certifications">
+          ${sectionHead(sections[6])}
+          <div class="cve-section-body">
+            ${(s.certifications || []).map((c, i) => renderCertification(c, i, t)).join("")}
+            <button class="cve-add-btn" onclick="cveAddCert()">+ ${t.add} ${t.cert}</button>
+          </div>
+        </div>
 
-    <!-- Projects -->
-    <div class="cve-section">
-      <div class="cve-section-head"><h3>🚀 ${t.projects}</h3></div>
-      <div class="cve-section-body">
-        ${(s.projects || []).map((p, i) => renderProject(p, i, t)).join("")}
-        <button class="cve-add-btn" onclick="cveAddProject()">+ ${t.add} ${t.project}</button>
-      </div>
-    </div>
-
-    <!-- Certifications -->
-    <div class="cve-section">
-      <div class="cve-section-head"><h3>🏆 ${t.certifications}</h3></div>
-      <div class="cve-section-body">
-        ${(s.certifications || []).map((c, i) => renderCertification(c, i, t)).join("")}
-        <button class="cve-add-btn" onclick="cveAddCert()">+ ${t.add} ${t.cert}</button>
-      </div>
-    </div>
-
-    <!-- Languages -->
-    <div class="cve-section">
-      <div class="cve-section-head"><h3>🌐 ${t.languages}</h3></div>
-      <div class="cve-section-body">
-        ${(s.languages || []).map((l, i) => `
-          <div class="cve-field-row" style="margin-bottom:6px">
-            <div class="cve-field"><input value="${escapeAttr(l.name || '')}" oninput="cveUpdateNested('languages',${i},'name',this.value)" placeholder="${t.language}" /></div>
-            <div class="cve-field" style="display:flex;align-items:center;gap:6px"><input value="${escapeAttr(l.level || '')}" oninput="cveUpdateNested('languages',${i},'level',this.value)" placeholder="${t.level}" style="flex:1" /><button onclick="cveRemoveItem('languages',${i})" style="background:transparent;border:none;color:var(--f);cursor:pointer;font-size:16px">✕</button></div>
-          </div>`).join("")}
-        <button class="cve-add-btn" onclick="cveAddLanguage()">+ ${t.add} ${t.language}</button>
+        <!-- Languages -->
+        <div class="cve-section" data-color="teal" id="cve-sec-languages">
+          ${sectionHead(sections[7])}
+          <div class="cve-section-body">
+            ${(s.languages || []).map((l, i) => `
+              <div class="cve-field-row" style="margin-bottom:8px">
+                <div class="cve-field"><input value="${escapeAttr(l.name || '')}" oninput="cveUpdateNested('languages',${i},'name',this.value)" placeholder="${t.language}" /></div>
+                <div class="cve-field" style="display:flex;align-items:center;gap:6px"><input value="${escapeAttr(l.level || '')}" oninput="cveUpdateNested('languages',${i},'level',this.value)" placeholder="${t.level}" style="flex:1" /><button onclick="cveRemoveItem('languages',${i})" style="background:transparent;border:none;color:var(--f);cursor:pointer;font-size:16px;padding:6px">✕</button></div>
+              </div>`).join("")}
+            <button class="cve-add-btn" onclick="cveAddLanguage()">+ ${t.add} ${t.language}</button>
+          </div>
+        </div>
       </div>
     </div>`;
+
+  // Set first nav item active
+  setTimeout(() => {
+    const first = document.querySelector(".cve-nav-item");
+    if (first) first.classList.add("active");
+  }, 0);
 }
 
+window.cveScrollTo = (sectionId) => {
+  const target = document.getElementById("cve-sec-" + sectionId);
+  if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.querySelectorAll(".cve-nav-item").forEach(n => n.classList.remove("active"));
+  const navItem = document.querySelector(`.cve-nav-item[data-nav="${sectionId}"]`);
+  if (navItem) navItem.classList.add("active");
+};
+
 function renderExperience(e, i, t) {
+  const dateRange = (e.start_date || e.end_date)
+    ? `${e.start_date || "?"} – ${e.end_date || "?"}`
+    : "";
   return `
     <div class="cve-experience-item">
-      <div class="cve-item-actions"><button onclick="cveRemoveItem('experience',${i})" title="מחק">✕</button></div>
+      <div class="cve-item-actions"><button onclick="cveRemoveItem('experience',${i})" title="מחק">✕ מחק</button></div>
+      <div class="cve-item-title">${escapeHtml(e.title || "(תפקיד חדש)")}</div>
+      <div class="cve-item-subtitle">${escapeHtml(e.company || "(חברה)")}${e.location ? ` · ${escapeHtml(e.location)}` : ""}</div>
+      ${dateRange ? `<div class="cve-item-dates">📅 ${escapeHtml(dateRange)}</div>` : ""}
+      <div class="cve-item-divider"></div>
       <div class="cve-field-row">
-        <div class="cve-field"><label>${t.title}</label><input value="${escapeAttr(e.title || '')}" oninput="cveUpdateNested('experience',${i},'title',this.value)" /></div>
+        <div class="cve-field"><label>${t.title}</label><input value="${escapeAttr(e.title || '')}" oninput="cveUpdateLive('experience',${i},'title',this.value,'cve-item-title')" /></div>
         <div class="cve-field"><label>${t.company}</label><input value="${escapeAttr(e.company || '')}" oninput="cveUpdateNested('experience',${i},'company',this.value)" /></div>
       </div>
       <div class="cve-field-row-3">
@@ -2218,7 +2270,7 @@ function renderExperience(e, i, t) {
               <input value="${escapeAttr(a)}" oninput="cveUpdateBullet('experience',${i},'achievements',${j},this.value)" />
               <button onclick="cveRemoveBullet('experience',${i},'achievements',${j})">✕</button>
             </div>`).join("")}
-          <button class="cve-add-btn" style="font-size:11px;padding:5px" onclick="cveAddBullet('experience',${i},'achievements')">+ ${t.add}</button>
+          <button class="cve-add-btn" style="font-size:12px;padding:8px" onclick="cveAddBullet('experience',${i},'achievements')">+ ${t.add}</button>
         </div>
       </div>
       <div class="cve-field"><label>${t.technologies}</label><input value="${escapeAttr((e.technologies || []).join(', '))}" oninput="cveUpdateCsv('experience',${i},'technologies',this.value)" placeholder="React, Node.js, AWS" /></div>
@@ -2226,9 +2278,15 @@ function renderExperience(e, i, t) {
 }
 
 function renderEducation(e, i, t) {
+  const dateRange = (e.start_date || e.end_date) ? `${e.start_date || "?"} – ${e.end_date || "?"}` : "";
+  const fullDegree = [e.degree, e.field].filter(Boolean).join(" · ");
   return `
     <div class="cve-edu-item">
-      <div class="cve-item-actions"><button onclick="cveRemoveItem('education',${i})">✕</button></div>
+      <div class="cve-item-actions"><button onclick="cveRemoveItem('education',${i})">✕ מחק</button></div>
+      <div class="cve-item-title">${escapeHtml(fullDegree || "(תואר)")}</div>
+      <div class="cve-item-subtitle">${escapeHtml(e.institution || "(מוסד)")}${e.location ? ` · ${escapeHtml(e.location)}` : ""}</div>
+      ${dateRange ? `<div class="cve-item-dates">🎓 ${escapeHtml(dateRange)}</div>` : ""}
+      <div class="cve-item-divider"></div>
       <div class="cve-field-row">
         <div class="cve-field"><label>${t.institution}</label><input value="${escapeAttr(e.institution || '')}" oninput="cveUpdateNested('education',${i},'institution',this.value)" /></div>
         <div class="cve-field"><label>${t.degree}</label><input value="${escapeAttr(e.degree || '')}" oninput="cveUpdateNested('education',${i},'degree',this.value)" /></div>
@@ -2262,7 +2320,11 @@ function renderSkillCat(c, i, t) {
 function renderProject(p, i, t) {
   return `
     <div class="cve-project-item">
-      <div class="cve-item-actions"><button onclick="cveRemoveItem('projects',${i})">✕</button></div>
+      <div class="cve-item-actions"><button onclick="cveRemoveItem('projects',${i})">✕ מחק</button></div>
+      <div class="cve-item-title">${escapeHtml(p.name || "(פרויקט)")}</div>
+      <div class="cve-item-subtitle">${escapeHtml(p.description ? p.description.slice(0, 80) + (p.description.length > 80 ? "..." : "") : "")}</div>
+      ${p.date ? `<div class="cve-item-dates">🚀 ${escapeHtml(p.date)}</div>` : ""}
+      <div class="cve-item-divider"></div>
       <div class="cve-field-row">
         <div class="cve-field"><label>${t.project}</label><input value="${escapeAttr(p.name || '')}" oninput="cveUpdateNested('projects',${i},'name',this.value)" /></div>
         <div class="cve-field"><label>${t.date}</label><input value="${escapeAttr(p.date || '')}" oninput="cveUpdateNested('projects',${i},'date',this.value)" /></div>
@@ -2278,7 +2340,11 @@ function renderProject(p, i, t) {
 function renderCertification(c, i, t) {
   return `
     <div class="cve-cert-item">
-      <div class="cve-item-actions"><button onclick="cveRemoveItem('certifications',${i})">✕</button></div>
+      <div class="cve-item-actions"><button onclick="cveRemoveItem('certifications',${i})">✕ מחק</button></div>
+      <div class="cve-item-title">${escapeHtml(c.name || "(הסמכה)")}</div>
+      <div class="cve-item-subtitle">${escapeHtml(c.issuer || "(מנפיק)")}</div>
+      ${c.date ? `<div class="cve-item-dates">🏆 ${escapeHtml(c.date)}</div>` : ""}
+      <div class="cve-item-divider"></div>
       <div class="cve-field-row-3">
         <div class="cve-field"><label>${t.cert}</label><input value="${escapeAttr(c.name || '')}" oninput="cveUpdateNested('certifications',${i},'name',this.value)" /></div>
         <div class="cve-field"><label>${t.issuer}</label><input value="${escapeAttr(c.issuer || '')}" oninput="cveUpdateNested('certifications',${i},'issuer',this.value)" /></div>
@@ -2294,6 +2360,15 @@ window.cveUpdate = (key, value) => { CVE_STATE.structured[key] = value; };
 window.cveUpdateNested = (section, idx, key, value) => {
   if (!CVE_STATE.structured[section][idx]) return;
   CVE_STATE.structured[section][idx][key] = value;
+};
+window.cveUpdateLive = (section, idx, key, value, liveClass) => {
+  cveUpdateNested(section, idx, key, value);
+  // Update the live header in the same item
+  const item = document.querySelectorAll(`.cve-${section === "experience" ? "experience" : section === "education" ? "edu" : section === "projects" ? "project" : "cert"}-item`)[idx];
+  if (item) {
+    const liveEl = item.querySelector("." + liveClass);
+    if (liveEl) liveEl.textContent = value || "(תפקיד חדש)";
+  }
 };
 window.cveUpdateCsv = (section, idx, key, value) => {
   CVE_STATE.structured[section][idx][key] = value.split(",").map(s => s.trim()).filter(Boolean);

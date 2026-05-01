@@ -51,7 +51,7 @@ const MIME: Record<string, string> = {
   ".json": "application/json; charset=utf-8",
 };
 
-const PORT = 5173;
+const PORT = Number(process.env.PORT) || 5174;
 
 function readBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolveP, reject) => {
