@@ -26,6 +26,34 @@ export interface CostEntry {
   estimated_cost: number;
 }
 
+export interface BudgetCheck {
+  ok: boolean;
+  daily_used: number;
+  daily_limit: number;
+  message?: string;
+}
+
+export function checkBudget(): BudgetCheck {
+  const limit = Number(process.env.DAILY_BUDGET || "0");
+  if (!limit || limit <= 0) return { ok: true, daily_used: 0, daily_limit: 0 };
+
+  const entries = load();
+  const todayStart = new Date().setHours(0, 0, 0, 0);
+  const usedToday = entries
+    .filter(e => new Date(e.at).getTime() >= todayStart)
+    .reduce((sum, e) => sum + e.estimated_cost, 0);
+
+  if (usedToday >= limit) {
+    return {
+      ok: false,
+      daily_used: usedToday,
+      daily_limit: limit,
+      message: `הגעת לתקציב היומי של $${limit.toFixed(2)} (השתמשת ב-$${usedToday.toFixed(3)}). פעולות AI חסומות עד מחר. שנה ב-.env: DAILY_BUDGET=`,
+    };
+  }
+  return { ok: true, daily_used: usedToday, daily_limit: limit };
+}
+
 export interface CostSummary {
   total_calls: number;
   total_cached: number;

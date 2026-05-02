@@ -1732,6 +1732,189 @@ a:hover { text-decoration: underline; }
   color: var(--muted);
 }
 
+/* ─── CV AI Assistant ─── */
+.cve-ai-card {
+  background: linear-gradient(135deg, rgba(168,85,247,0.08), rgba(77,159,255,0.05));
+  border: 1px solid rgba(168,85,247,0.3);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 16px rgba(168,85,247,0.1);
+  position: relative;
+  overflow: hidden;
+}
+.cve-ai-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 90% 0%, rgba(168,85,247,0.15) 0%, transparent 50%);
+  pointer-events: none;
+}
+.cve-ai-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  position: relative;
+}
+.cve-ai-icon {
+  font-size: 28px;
+  filter: drop-shadow(0 0 8px rgba(168,85,247,0.4));
+  animation: float 3s ease-in-out infinite;
+}
+.cve-ai-toggle {
+  margin-right: auto;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s;
+}
+.cve-ai-toggle:hover { color: var(--fg); border-color: var(--accent); }
+.cve-ai-card.collapsed .cve-ai-body { display: none; }
+.cve-ai-card.collapsed { padding-bottom: 16px; }
+.cve-ai-card.collapsed .cve-ai-head { margin-bottom: 0; }
+
+.cve-ai-body textarea {
+  width: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 70px;
+  transition: all 0.2s;
+}
+.cve-ai-body textarea:focus {
+  outline: none;
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 3px rgba(168,85,247,0.15);
+}
+
+.cve-ai-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+.cve-ai-actions .btn.primary {
+  background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+  border: none;
+  color: white;
+  box-shadow: 0 2px 12px rgba(168,85,247,0.3);
+}
+.cve-ai-actions .btn.primary:hover {
+  box-shadow: 0 4px 18px rgba(168,85,247,0.5);
+  transform: translateY(-1px);
+}
+
+.smart-add-diff {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.smart-add-summary {
+  background: rgba(63,185,80,0.1);
+  border: 1px solid rgba(63,185,80,0.3);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--a);
+  margin-bottom: 14px;
+  border-right: 3px solid var(--a);
+}
+
+/* ─── CV Revisions ─── */
+.cve-rev-badge {
+  display: inline-block;
+  background: var(--accent);
+  color: white;
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.rev-item {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  position: relative;
+  transition: all 0.2s ease;
+}
+.rev-item:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.rev-item.current {
+  border-color: var(--a);
+  background: rgba(63,185,80,0.05);
+}
+.rev-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.rev-item-date {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--fg);
+}
+.rev-item-lang {
+  font-size: 11px;
+  background: var(--panel-2);
+  padding: 2px 8px;
+  border-radius: 10px;
+  color: var(--muted);
+}
+.rev-item-summary {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.rev-item-label {
+  display: inline-block;
+  background: var(--c);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-right: 6px;
+}
+.rev-item-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.rev-item-actions button {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--fg-soft);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.rev-item-actions button:hover { color: var(--accent); border-color: var(--accent); }
+.rev-item-actions button.danger:hover { color: var(--f); border-color: var(--f); }
+
 /* ─── Mentor ─── */
 .mentor-layout {
   display: grid;

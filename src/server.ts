@@ -16,6 +16,7 @@ import {
   generateAIOpportunities, generateWLBRanking,
   mentorReply, type MentorContext,
   extractStructuredCV, translateStructuredCV, structuredCVToMarkdown,
+  cvSmartAdd, cvAnalyze, cvCompact, cvImproveFromAnalysis,
   type Lang, type MockMessage,
 } from "./cv.js";
 import { markdownToDocx, markdownToPdf } from "./export.js";
@@ -120,6 +121,22 @@ function parseMultipart(body: Buffer, contentType: string): { filename: string; 
     return { filename: fn[1], content };
   }
   return null;
+}
+
+function computeChangesSummary(oldS: any, newS: any): string {
+  const changes: string[] = [];
+  const sections = ["header", "summary", "experience", "education", "skills", "projects", "certifications", "languages"];
+  const labels: Record<string, string> = {
+    header: "פרטים", summary: "תקציר", experience: "ניסיון",
+    education: "השכלה", skills: "כישורים", projects: "פרויקטים",
+    certifications: "הסמכות", languages: "שפות",
+  };
+  for (const sec of sections) {
+    const o = JSON.stringify(oldS[sec] || null);
+    const n = JSON.stringify(newS[sec] || null);
+    if (o !== n) changes.push(labels[sec]);
+  }
+  return changes.length ? `שונה: ${changes.join(", ")}` : "ללא שינויים";
 }
 
 function extractMultipartField(body: Buffer, contentType: string, fieldName: string): string | null {
@@ -777,15 +794,213 @@ const server = createServer(async (req, res) => {
 
     if (pathname === "/api/cv-editor/save" && method === "POST") {
       const body = await readBody(req);
-      const { profileId, cvId, language, structured } = JSON.parse(body.toString("utf-8"));
+      const { profileId, cvId, language, structured, label } = JSON.parse(body.toString("utf-8"));
       const stored = profileId ? getProfile(profileId) : getActiveProfile();
       if (!stored) return sendJSON(res, 404, { error: "פרופיל לא נמצא" });
       const cv = cvId ? stored.cvs.find(c => c.id === cvId) : stored.cvs[stored.primary_cv_index || 0];
       if (!cv) return sendJSON(res, 404, { error: "CV לא נמצא" });
       if (!cv.structured) cv.structured = {};
+      if (!cv.revisions) cv.revisions = [];
+
+      // Build revision from previous (current) state if exists and different
+      const previous = cv.structured[language as "en" | "he"];
+      const newJson = JSON.stringify(structured);
+      const prevJson = previous ? JSON.stringify(previous) : "";
+
+      if (previous && newJson !== prevJson) {
+        // Save the previous version as a revision
+        const summary = computeChangesSummary(previous, structured);
+        cv.revisions.push({
+          id: "rev-" + Date.now().toString(36),
+          saved_at: new Date().toISOString(),
+          language: language as "en" | "he",
+          label: label || undefined,
+          changes_summary: summary,
+          structured: previous,
+        });
+        // Keep last 30 revisions
+        if (cv.revisions.length > 30) cv.revisions = cv.revisions.slice(-30);
+      }
+
       cv.structured[language as "en" | "he"] = structured;
       saveStoredProfile(stored);
+      return sendJSON(res, 200, { ok: true, revisions_count: cv.revisions.length });
+    }
+
+    // ── List revisions ──
+    if (pathname === "/api/cv-editor/revisions" && method === "GET") {
+      const profileId = query.get("profileId");
+      const cvId = query.get("cvId");
+      const language = query.get("language") as "en" | "he";
+      const stored = profileId ? getProfile(profileId) : getActiveProfile();
+      if (!stored) return sendJSON(res, 404, { error: "פרופיל לא נמצא" });
+      const cv = cvId ? stored.cvs.find(c => c.id === cvId) : stored.cvs[stored.primary_cv_index || 0];
+      if (!cv) return sendJSON(res, 404, { error: "CV לא נמצא" });
+      const revisions = (cv.revisions || [])
+        .filter(r => !language || r.language === language)
+        .map(r => ({ id: r.id, saved_at: r.saved_at, language: r.language, label: r.label, changes_summary: r.changes_summary }))
+        .reverse(); // newest first
+      return sendJSON(res, 200, { ok: true, revisions, current_exists: !!cv.structured?.[language] });
+    }
+
+    // ── Restore a revision ──
+    if (pathname === "/api/cv-editor/restore" && method === "POST") {
+      const body = await readBody(req);
+      const { profileId, cvId, revisionId } = JSON.parse(body.toString("utf-8"));
+      const stored = profileId ? getProfile(profileId) : getActiveProfile();
+      if (!stored) return sendJSON(res, 404, { error: "פרופיל לא נמצא" });
+      const cv = cvId ? stored.cvs.find(c => c.id === cvId) : stored.cvs[stored.primary_cv_index || 0];
+      if (!cv) return sendJSON(res, 404, { error: "CV לא נמצא" });
+      const rev = (cv.revisions || []).find(r => r.id === revisionId);
+      if (!rev) return sendJSON(res, 404, { error: "גרסה לא נמצאה" });
+      if (!cv.structured) cv.structured = {};
+      // Save current as new revision before restoring
+      const current = cv.structured[rev.language];
+      if (current) {
+        cv.revisions!.push({
+          id: "rev-" + Date.now().toString(36),
+          saved_at: new Date().toISOString(),
+          language: rev.language,
+          label: "לפני שחזור",
+          structured: current,
+        });
+        if (cv.revisions!.length > 30) cv.revisions = cv.revisions!.slice(-30);
+      }
+      cv.structured[rev.language] = rev.structured;
+      saveStoredProfile(stored);
+      return sendJSON(res, 200, { ok: true, structured: rev.structured });
+    }
+
+    // ── Delete revision ──
+    if (pathname === "/api/cv-editor/delete-revision" && method === "POST") {
+      const body = await readBody(req);
+      const { profileId, cvId, revisionId } = JSON.parse(body.toString("utf-8"));
+      const stored = profileId ? getProfile(profileId) : getActiveProfile();
+      if (!stored) return sendJSON(res, 404, { error: "פרופיל לא נמצא" });
+      const cv = cvId ? stored.cvs.find(c => c.id === cvId) : stored.cvs[stored.primary_cv_index || 0];
+      if (!cv) return sendJSON(res, 404, { error: "CV לא נמצא" });
+      cv.revisions = (cv.revisions || []).filter(r => r.id !== revisionId);
+      saveStoredProfile(stored);
       return sendJSON(res, 200, { ok: true });
+    }
+
+    // ── Label revision ──
+    if (pathname === "/api/cv-editor/label-revision" && method === "POST") {
+      const body = await readBody(req);
+      const { profileId, cvId, revisionId, label } = JSON.parse(body.toString("utf-8"));
+      const stored = profileId ? getProfile(profileId) : getActiveProfile();
+      if (!stored) return sendJSON(res, 404, { error: "פרופיל לא נמצא" });
+      const cv = cvId ? stored.cvs.find(c => c.id === cvId) : stored.cvs[stored.primary_cv_index || 0];
+      if (!cv) return sendJSON(res, 404, { error: "CV לא נמצא" });
+      const rev = (cv.revisions || []).find(r => r.id === revisionId);
+      if (!rev) return sendJSON(res, 404, { error: "גרסה לא נמצאה" });
+      rev.label = label || undefined;
+      saveStoredProfile(stored);
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    // ── CV Smart Add ──
+    if (pathname === "/api/cv-editor/smart-add" && method === "POST") {
+      const body = await readBody(req);
+      const { structured, text, language } = JSON.parse(body.toString("utf-8"));
+      if (!structured || !text?.trim()) return sendJSON(res, 400, { error: "חסר מבנה או טקסט" });
+      const result = await cvSmartAdd(structured, text, (language || "en") as "en" | "he");
+      return sendJSON(res, 200, { ok: true, ...result });
+    }
+
+    // ── CV Analyze + save ──
+    if (pathname === "/api/cv-editor/analyze" && method === "POST") {
+      const body = await readBody(req);
+      const { structured, language, profileId, cvId } = JSON.parse(body.toString("utf-8"));
+      if (!structured) return sendJSON(res, 400, { error: "חסר structured" });
+      const lang = (language || "en") as "en" | "he";
+      const text = await cvAnalyze(structured, lang);
+
+      // Save analysis to profile CV
+      let analysisId: string | null = null;
+      if (profileId && cvId) {
+        const stored = getProfile(profileId);
+        if (stored) {
+          const cv = stored.cvs.find(c => c.id === cvId);
+          if (cv) {
+            if (!cv.analyses) cv.analyses = [];
+            analysisId = "ana-" + Date.now().toString(36);
+            cv.analyses.push({
+              id: analysisId,
+              created_at: new Date().toISOString(),
+              language: lang,
+              text,
+              cv_snapshot: structured,
+            });
+            // Keep last 20 analyses
+            if (cv.analyses.length > 20) cv.analyses = cv.analyses.slice(-20);
+            saveStoredProfile(stored);
+          }
+        }
+      }
+
+      return sendJSON(res, 200, { ok: true, text, analysisId });
+    }
+
+    // ── List past analyses ──
+    if (pathname === "/api/cv-editor/analyses" && method === "GET") {
+      const profileId = query.get("profileId");
+      const cvId = query.get("cvId");
+      const language = query.get("language") as "en" | "he" | null;
+      const stored = profileId ? getProfile(profileId) : getActiveProfile();
+      if (!stored) return sendJSON(res, 404, { error: "פרופיל לא נמצא" });
+      const cv = cvId ? stored.cvs.find(c => c.id === cvId) : stored.cvs[stored.primary_cv_index || 0];
+      if (!cv) return sendJSON(res, 404, { error: "CV לא נמצא" });
+      const analyses = (cv.analyses || [])
+        .filter(a => !language || a.language === language)
+        .map(a => ({ id: a.id, created_at: a.created_at, language: a.language }))
+        .reverse();
+      return sendJSON(res, 200, { ok: true, analyses });
+    }
+
+    // ── Get specific analysis ──
+    if (pathname === "/api/cv-editor/analysis" && method === "GET") {
+      const profileId = query.get("profileId");
+      const cvId = query.get("cvId");
+      const analysisId = query.get("id");
+      const stored = profileId ? getProfile(profileId) : getActiveProfile();
+      if (!stored) return sendJSON(res, 404, { error: "פרופיל לא נמצא" });
+      const cv = cvId ? stored.cvs.find(c => c.id === cvId) : stored.cvs[stored.primary_cv_index || 0];
+      if (!cv) return sendJSON(res, 404, { error: "CV לא נמצא" });
+      const analysis = (cv.analyses || []).find(a => a.id === analysisId);
+      if (!analysis) return sendJSON(res, 404, { error: "ניתוח לא נמצא" });
+      return sendJSON(res, 200, { ok: true, analysis });
+    }
+
+    // ── Delete analysis ──
+    if (pathname === "/api/cv-editor/analysis-delete" && method === "POST") {
+      const body = await readBody(req);
+      const { profileId, cvId, analysisId } = JSON.parse(body.toString("utf-8"));
+      const stored = profileId ? getProfile(profileId) : getActiveProfile();
+      if (!stored) return sendJSON(res, 404, { error: "פרופיל לא נמצא" });
+      const cv = cvId ? stored.cvs.find(c => c.id === cvId) : stored.cvs[stored.primary_cv_index || 0];
+      if (!cv) return sendJSON(res, 404, { error: "CV לא נמצא" });
+      cv.analyses = (cv.analyses || []).filter(a => a.id !== analysisId);
+      saveStoredProfile(stored);
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    // ── Improve CV based on analysis ──
+    if (pathname === "/api/cv-editor/improve" && method === "POST") {
+      const body = await readBody(req);
+      const { structured, analysisText, language } = JSON.parse(body.toString("utf-8"));
+      if (!structured || !analysisText) return sendJSON(res, 400, { error: "חסר structured או analysisText" });
+      const result = await cvImproveFromAnalysis(structured, analysisText, (language || "en") as "en" | "he");
+      return sendJSON(res, 200, { ok: true, ...result });
+    }
+
+    // ── CV Compact ──
+    if (pathname === "/api/cv-editor/compact" && method === "POST") {
+      const body = await readBody(req);
+      const { structured, language } = JSON.parse(body.toString("utf-8"));
+      if (!structured) return sendJSON(res, 400, { error: "חסר structured" });
+      const compacted = await cvCompact(structured, (language || "en") as "en" | "he");
+      return sendJSON(res, 200, { ok: true, structured: compacted });
     }
 
     if (pathname === "/api/cv-editor/generate" && method === "POST") {

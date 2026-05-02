@@ -77,6 +77,23 @@ export interface LanguageItem {
   level: string;
 }
 
+export interface CVRevision {
+  id: string;                  // timestamp-based
+  saved_at: string;
+  language: "en" | "he";
+  label?: string;              // optional user label
+  changes_summary?: string;    // auto-generated
+  structured: StructuredCV;
+}
+
+export interface CVAnalysis {
+  id: string;                  // timestamp-based
+  created_at: string;
+  language: "en" | "he";
+  text: string;                // the analysis markdown
+  cv_snapshot: StructuredCV;   // CV at time of analysis
+}
+
 export interface ProfileCV {
   id: string;
   filename: string;
@@ -87,6 +104,8 @@ export interface ProfileCV {
     en?: StructuredCV;
     he?: StructuredCV;
   };
+  revisions?: CVRevision[];    // history of saves, newest last
+  analyses?: CVAnalysis[];     // history of CV analyses
 }
 
 export interface StoredProfile {

@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import mammoth from "mammoth";
 import type { Job, Profile } from "./types.js";
 import { getCached, setCache } from "./cache.js";
-import { logCost } from "./costs.js";
+import { logCost, checkBudget } from "./costs.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -36,8 +36,18 @@ async function cachedGenerate(opts: {
     return cached;
   }
 
+  // Budget check (only blocks new API calls, not cached)
+  const budget = checkBudget();
+  if (!budget.ok) {
+    throw new Error(budget.message || "הגעת לתקציב היומי");
+  }
+
+  // Web search opt-out via env
+  const webDisabled = process.env.DISABLE_WEB_SEARCH === "1";
+  const useWebSearch = opts.webSearch && !webDisabled;
+
   const anthropic = client();
-  const tools = opts.webSearch ? [WEB_SEARCH_TOOL] : undefined;
+  const tools = useWebSearch ? [WEB_SEARCH_TOOL] : undefined;
   const msg = await anthropic.messages.create({
     model: opts.model,
     max_tokens: opts.maxTokens,
@@ -47,8 +57,8 @@ async function cachedGenerate(opts: {
   });
 
   const text = extractText(msg);
-  logCost(opts.type, opts.model, msg.usage.input_tokens, msg.usage.output_tokens, !!opts.webSearch, false);
-  setCache(opts.type, text, !!opts.webSearch, ...opts.cacheKey);
+  logCost(opts.type, opts.model, msg.usage.input_tokens, msg.usage.output_tokens, !!useWebSearch, false);
+  setCache(opts.type, text, !!useWebSearch, ...opts.cacheKey);
   return text;
 }
 
@@ -864,7 +874,7 @@ export async function extractStructuredCV(cvText: string, language: "en" | "he")
   return parseJsonFromText(await cachedGenerate({
     type: "structured-cv",
     cacheKey: [language, cvText.length.toString(), cvText.slice(0, 100).replace(/\s/g, "")],
-    model: model(),
+    model: cheapModel(),
     maxTokens: 4000,
     messages: [{
       role: "user",
@@ -941,13 +951,176 @@ Rules:
   }));
 }
 
+// ── Smart add: incorporate free text into structured CV ──
+export async function cvSmartAdd(structured: any, userText: string, language: "en" | "he"): Promise<{ updated: any; summary: string }> {
+  const langInstr = language === "en" ? "Output in English." : "פלט בעברית.";
+  const result = await cachedGenerate({
+    type: "cv-smart-add",
+    cacheKey: [language, userText.slice(0, 100), JSON.stringify(structured.header).slice(0, 100), Date.now().toString()],
+    model: cheapModel(),
+    maxTokens: 4000,
+    messages: [{
+      role: "user",
+      content: `You are a CV editor. The user has a structured CV in ${language === "en" ? "English" : "Hebrew"} and wants to add this information intelligently to the right place(s).
+
+USER INPUT (free text):
+"""
+${userText}
+"""
+
+CURRENT STRUCTURED CV:
+${JSON.stringify(structured, null, 2)}
+
+Your task:
+1. Analyze the user's free text — figure out what they want to add (new job? new bullet to existing job? new skill? new project? update summary?)
+2. Modify the structured CV to incorporate this — in the right place(s)
+3. Be conservative: only add/modify what's clearly stated, don't invent
+4. Keep existing data intact unless explicitly contradicted
+
+Return STRICTLY this JSON shape (no markdown, no code fences):
+{
+  "updated": <the full modified structured CV in the SAME schema>,
+  "summary": "<1-2 sentence Hebrew summary of what you changed and where>"
+}
+
+${langInstr}`,
+    }],
+  });
+  const parsed = parseJsonFromText(result);
+  return parsed;
+}
+
+// ── Analyze CV and return feedback ──
+export async function cvAnalyze(structured: any, language: "en" | "he"): Promise<string> {
+  return cachedGenerate({
+    type: "cv-analyze",
+    cacheKey: [language, JSON.stringify(structured).length.toString(), structured.header?.name || "", Date.now().toString().slice(0, 8)],
+    model: model(),
+    maxTokens: 3000,
+    webSearch: false,
+    messages: [{
+      role: "user",
+      content: `אתה יועץ קורות חיים מומחה לשוק ההייטק הישראלי 2026. נתח את ה-CV הזה (גרסה ${language === "en" ? "אנגלית" : "עברית"}) וספק משוב מקצועי בעברית בפורמט Markdown.
+
+CV מובנה:
+${JSON.stringify(structured, null, 2)}
+
+הכן דוח עם הסעיפים:
+
+# 📊 ניתוח קורות החיים
+
+## 🎯 ציון כללי
+ציון X/100 + 2-3 משפטים על הרושם הכללי.
+
+## 💪 חוזקות
+3-5 דברים שעובדים טוב.
+
+## ⚠️ חולשות ומה לתקן
+3-6 בעיות ספציפיות עם המלצה מדויקת לכל אחת. למשל:
+- "תיאור משרה X חסר מספרים — הוסף KPIs"
+- "summary ארוך מדי — צמצם ל-3 משפטים"
+
+## 📋 בדיקה לפי סעיף
+לכל סעיף ב-CV (header / summary / experience / education / skills / projects / certifications):
+- ✅/⚠️/❌ סטטוס
+- הערה ספציפית אם יש בעיה
+
+## 🤖 ATS-Friendliness
+ציון X/10. סמן בעיות שיכולות להיתקע ב-ATS:
+- מילות מפתח חסרות
+- פורמט בעייתי
+- מבנה לא סטנדרטי
+
+## ⚡ פעולות מיידיות (Top 5)
+5 שינויים ספציפיים שיגרמו להבדל המשמעותי ביותר. ממוספרים, פרקטיים, עם דוגמה לפני/אחרי אם רלוונטי.
+
+## 🎨 ניסוח חזק יותר
+2-3 דוגמאות לbullets שהיית יכול לחזק. הראה "לפני → אחרי".
+
+ענייני, ישיר, מבוסס דוגמאות. החזר רק את הניתוח.`,
+    }],
+  });
+}
+
+// ── Improve CV based on analysis ──
+export async function cvImproveFromAnalysis(structured: any, analysisText: string, language: "en" | "he"): Promise<{ improved: any; summary: string }> {
+  const result = await cachedGenerate({
+    type: "cv-improve",
+    cacheKey: [language, structured.header?.name || "", analysisText.slice(0, 100), Date.now().toString().slice(0, 10)],
+    model: model(),
+    maxTokens: 5000,
+    messages: [{
+      role: "user",
+      content: `אתה עורך CV מקצועי. יש לך CV מובנה וניתוח מקצועי שלו. המשימה שלך: ליצור גרסה משופרת של ה-CV שמתקנת את הבעיות שהוצגו בניתוח.
+
+CV מקורי:
+${JSON.stringify(structured, null, 2)}
+
+ניתוח מקצועי:
+"""
+${analysisText}
+"""
+
+הוראות שיפור:
+1. **ישם את ההמלצות מהניתוח** — בעיקר ה-"Top 5 פעולות" וה-"ניסוח חזק יותר"
+2. **חזק bullets חלשים** — הפוך פסיביים לאקטיביים, הוסף מספרים אם רמוז במקור
+3. **שפר תקציר** אם הניתוח אמר שהוא חלש/ארוך
+4. **שמור על מבנה ה-JSON זהה** לחלוטין
+5. **אל תמציא** — רק תחזק את מה שכבר קיים. אם אין מספרים בקו"ח המקורי — אל תוסיף "increased revenue by 200%" סתם
+6. שפה: ${language === "en" ? "English" : "עברית"}
+7. שמור את כל הסעיפים והפריטים — רק שפר אותם
+
+החזר JSON תקין בפורמט הזה (ללא markdown fences):
+{
+  "improved": <ה-CV המשופר במלואו, באותה סכמה>,
+  "summary": "<פסקה קצרה בעברית: מה שיפרת ולמה>"
+}`,
+    }],
+  });
+  return parseJsonFromText(result);
+}
+
+// ── Compact CV — reduce content to fit 2 pages ──
+export async function cvCompact(structured: any, language: "en" | "he"): Promise<any> {
+  const result = await cachedGenerate({
+    type: "cv-compact",
+    cacheKey: [language, JSON.stringify(structured).length.toString(), structured.header?.name || ""],
+    model: model(),
+    maxTokens: 4000,
+    messages: [{
+      role: "user",
+      content: `You are a CV optimization expert. Compress this structured CV to fit in 2 pages maximum (DOCX/PDF) while keeping ALL important information.
+
+CURRENT CV:
+${JSON.stringify(structured, null, 2)}
+
+Compression rules:
+1. Keep the EXACT same JSON schema and structure
+2. Cut down achievements: keep top 3-4 per job (most impactful)
+3. Tighten descriptions: shorter, punchier sentences
+4. Remove or shorten older experience (>10 years ago) — keep just title + company + dates
+5. Remove redundant skills mentioned in experience already
+6. Tighten summary to 2-3 sentences max
+7. Keep all dates, companies, titles, key achievements
+8. Skills section: keep top categories only
+9. Education: keep degree + institution + year, drop GPA/honors unless prestigious
+10. Output language: ${language === "en" ? "English" : "Hebrew"}
+
+DO NOT invent content. Only condense what exists.
+
+Return STRICTLY valid JSON in the same schema (no markdown fences, no commentary).`,
+    }],
+  });
+  return parseJsonFromText(result);
+}
+
 // ── Translate structured CV to another language ──
 export async function translateStructuredCV(structured: any, toLanguage: "en" | "he"): Promise<any> {
   const target = toLanguage === "en" ? "English" : "Hebrew";
   return parseJsonFromText(await cachedGenerate({
     type: "translated-cv",
     cacheKey: [toLanguage, JSON.stringify(structured).length.toString(), structured.header?.name || ""],
-    model: model(),
+    model: cheapModel(),
     maxTokens: 4000,
     messages: [{
       role: "user",
@@ -1134,15 +1307,20 @@ ${cvSnippet}
     ? [{ role: "user" as const, content: userMessage }]
     : [...ctx.conversationHistory.map(m => ({ role: m.role, content: m.content })), { role: "user" as const, content: userMessage }];
 
+  // Budget check
+  const budget = checkBudget();
+  if (!budget.ok) throw new Error(budget.message || "הגעת לתקציב היומי");
+
+  const useModel = cheapModel();
   const msg = await anthropic.messages.create({
-    model: model(),
+    model: useModel,
     max_tokens: 800,
     system: systemPrompt,
     messages,
   });
 
   const text = extractText(msg);
-  logCost("mentor", model(), msg.usage.input_tokens, msg.usage.output_tokens, false, false);
+  logCost("mentor", useModel, msg.usage.input_tokens, msg.usage.output_tokens, false, false);
   return text;
 }
 

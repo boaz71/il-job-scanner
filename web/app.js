@@ -6,6 +6,29 @@ let SCANS = [];
 let TRACKED = [];
 let TRACKED_IDS = new Set();
 
+// ═══════════════ Cost guard ═══════════════
+const EXPENSIVE_OPS = {
+  "deep-dive": { cost: "$0.04", time: "20-30s", web: true },
+  "interview-prep": { cost: "$0.03", time: "20-40s", web: true },
+  "salary": { cost: "$0.03", time: "15-25s", web: true },
+  "skill-gap": { cost: "$0.02", time: "15-25s", web: true },
+  "ai-opportunities": { cost: "$0.04", time: "30-60s", web: true },
+  "wlb-ranking": { cost: "$0.04", time: "30-60s", web: true },
+  "company-dive": { cost: "$0.04", time: "20-30s", web: true },
+  "github-analysis": { cost: "$0.03", time: "15-25s", web: false },
+  "compact": { cost: "$0.02", time: "15-25s", web: false },
+  "improve": { cost: "$0.025", time: "15-25s", web: false },
+  "analyze": { cost: "$0.015", time: "15-25s", web: false },
+  "profile-insights": { cost: "$0.03", time: "15-25s", web: true },
+};
+
+function confirmCost(opType) {
+  const info = EXPENSIVE_OPS[opType];
+  if (!info) return true;
+  const webNote = info.web ? " (כולל חיפוש באינטרנט)" : "";
+  return confirm(`💰 פעולה זו תעלה ~${info.cost} (Claude API)${webNote}\n⏱️ זמן משוער: ${info.time}\n\nלהמשיך?`);
+}
+
 // ═══════════════ API helpers ═══════════════
 async function api(path, opts = {}) {
   const r = await fetch(path, opts);
@@ -427,6 +450,9 @@ const GEN_LABELS = {
 
 window.generate = async (type, jobId, jobTitle, company, opts = {}) => {
   if (!ACTIVE_PROFILE) { toast("❌ אין פרופיל פעיל", true); return; }
+  // Cost confirmation for expensive ops
+  const opMap = { "interview": "interview-prep", "skill-gap": "skill-gap", "salary": "salary" };
+  if (opMap[type] && !confirmCost(opMap[type])) return;
   const meta = GEN_LABELS[type] || { name: type, time: "" };
   const suffix = opts.lang === "en" ? " · EN" : "";
   openModal(`${meta.name}${suffix}: ${jobTitle}`, `מייצר... (${meta.time})`, true);
@@ -976,6 +1002,7 @@ window.removeCV = async (profileId, cvId) => {
 
 document.getElementById("analyze-profile-btn").addEventListener("click", async () => {
   if (!ACTIVE_PROFILE) { toast("❌ אין פרופיל פעיל", true); return; }
+  if (!confirmCost("profile-insights")) return;
   const btn = document.getElementById("analyze-profile-btn");
   const orig = btn.textContent;
   btn.disabled = true; btn.innerHTML = "מנתח שוק... <span class='spinner'></span>";
@@ -1321,6 +1348,7 @@ window.clearCompare = () => {
 
 // ═══════════════ Company deep dive ═══════════════
 window.companyDive = async (company) => {
+  if (!confirmCost("company-dive")) return;
   openModal(`🏢 ${company} — סקירה מעמיקה`, "מנתח חברה... (15-25 שניות)", true);
   currentFilename = `company-dive-${company}.md`.replace(/[^\w.\u0590-\u05ff-]+/g, "_");
   try {
@@ -1520,6 +1548,7 @@ function renderWLB() {
 
 // WLB deep report button
 document.getElementById("wlb-deep-btn").addEventListener("click", async () => {
+  if (!confirmCost("wlb-ranking")) return;
   const btn = document.getElementById("wlb-deep-btn");
   const orig = btn.textContent;
   btn.disabled = true;
@@ -1565,6 +1594,7 @@ async function loadAIPage() {
 }
 
 document.getElementById("ai-refresh-btn").addEventListener("click", async () => {
+  if (!confirmCost("ai-opportunities")) return;
   const btn = document.getElementById("ai-refresh-btn");
   const intro = document.getElementById("ai-content");
   const report = document.getElementById("ai-report");
@@ -1815,6 +1845,7 @@ function renderPFProject(p) {
 document.getElementById("gh-scan-btn").addEventListener("click", async () => {
   const username = document.getElementById("gh-username").value.trim();
   if (!username) { toast("הזן username", true); return; }
+  if (!confirmCost("github-analysis")) return;
   const btn = document.getElementById("gh-scan-btn");
   const results = document.getElementById("gh-results");
   const orig = btn.textContent;
@@ -2028,6 +2059,13 @@ async function fetchCVEData() {
       `${r.language === "en" ? "🇬🇧 English" : "🇮🇱 עברית"} · ${r.structured.header.name}`;
     renderCVEditor();
     document.getElementById("cve-download-bar").style.display = "flex";
+    document.getElementById("cve-ai-panel").style.display = "block";
+    // Load revision count
+    try {
+      const rev = await api(`/api/cv-editor/revisions?profileId=${encodeURIComponent(CVE_STATE.profileId)}&cvId=${encodeURIComponent(CVE_STATE.cvId)}&language=${CVE_STATE.lang}`);
+      updateRevCountBadge(rev.revisions.length);
+    } catch {}
+    refreshAnalysesCount();
   } catch (e) {
     wrap.innerHTML = `<div class="empty">❌ ${escapeHtml(e.message)}</div>`;
   }
@@ -2054,17 +2092,421 @@ document.getElementById("cve-translate-btn").addEventListener("click", async () 
 });
 
 document.getElementById("cve-save-btn").addEventListener("click", async () => {
+  const label = prompt("תווית לגרסה זו (אופציונלי, השאר ריק לדלג):");
   try {
-    await api("/api/cv-editor/save", {
+    const r = await api("/api/cv-editor/save", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         profileId: CVE_STATE.profileId, cvId: CVE_STATE.cvId,
         language: CVE_STATE.lang, structured: CVE_STATE.structured,
+        label: label || undefined,
       }),
     });
-    toast("💾 נשמר");
+    toast(`💾 נשמר · ${r.revisions_count} גרסאות בהיסטוריה`);
+    updateRevCountBadge(r.revisions_count);
   } catch (e) { toast("❌ " + e.message, true); }
 });
+
+function updateRevCountBadge(count) {
+  const badge = document.getElementById("cve-rev-count");
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = "inline-block";
+  } else {
+    badge.style.display = "none";
+  }
+}
+
+// ── Revisions modal ──
+document.getElementById("cve-revisions-btn").addEventListener("click", openRevisions);
+document.getElementById("revisions-close").addEventListener("click", () =>
+  document.getElementById("revisions-modal-backdrop").classList.remove("open"));
+document.getElementById("revisions-modal-backdrop").addEventListener("click", (e) => {
+  if (e.target.id === "revisions-modal-backdrop") e.target.classList.remove("open");
+});
+
+async function openRevisions() {
+  const wrap = document.getElementById("revisions-list");
+  wrap.innerHTML = `<div class="ai-loading"><span class="spinner"></span><p>טוען...</p></div>`;
+  document.getElementById("revisions-modal-backdrop").classList.add("open");
+  try {
+    const r = await api(`/api/cv-editor/revisions?profileId=${encodeURIComponent(CVE_STATE.profileId)}&cvId=${encodeURIComponent(CVE_STATE.cvId)}&language=${CVE_STATE.lang}`);
+    if (!r.revisions.length) {
+      wrap.innerHTML = `<div class="empty" style="padding:30px"><p>📭 אין גרסאות שמורות עדיין.</p><p class="muted" style="margin-top:8px">כל פעם שתלחץ "💾 שמור שינויים" — הגרסה הקודמת תישמר כאן.</p></div>`;
+      updateRevCountBadge(0);
+      return;
+    }
+    updateRevCountBadge(r.revisions.length);
+    wrap.innerHTML = `
+      <div class="rev-item current">
+        <div class="rev-item-head">
+          <div class="rev-item-date">⭐ גרסה נוכחית (${CVE_STATE.lang === "en" ? "🇬🇧" : "🇮🇱"})</div>
+        </div>
+        <div class="rev-item-summary">זו הגרסה שמוצגת ונערכת כרגע</div>
+      </div>
+      ${r.revisions.map(rev => `
+        <div class="rev-item">
+          <div class="rev-item-head">
+            <div class="rev-item-date">
+              ${rev.label ? `<span class="rev-item-label">🏷️ ${escapeHtml(rev.label)}</span>` : ""}
+              📅 ${fmtDate(rev.saved_at)}
+            </div>
+            <span class="rev-item-lang">${rev.language === "en" ? "🇬🇧 EN" : "🇮🇱 HE"}</span>
+          </div>
+          <div class="rev-item-summary">${escapeHtml(rev.changes_summary || "—")}</div>
+          <div class="rev-item-actions">
+            <button onclick="restoreRevision('${escapeAttr(rev.id)}')">↺ שחזר</button>
+            <button onclick="labelRevision('${escapeAttr(rev.id)}','${escapeAttr(rev.label || "")}')">🏷️ ${rev.label ? "ערוך תווית" : "הוסף תווית"}</button>
+            <button class="danger" onclick="deleteRevision('${escapeAttr(rev.id)}')">🗑️ מחק</button>
+          </div>
+        </div>
+      `).join("")}`;
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty" style="color:var(--f)">❌ ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+window.restoreRevision = async (revisionId) => {
+  if (!confirm("לשחזר גרסה זו? הגרסה הנוכחית תישמר אוטומטית כגרסה חדשה.")) return;
+  try {
+    const r = await api("/api/cv-editor/restore", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: CVE_STATE.profileId, cvId: CVE_STATE.cvId, revisionId }),
+    });
+    CVE_STATE.structured = r.structured;
+    document.getElementById("revisions-modal-backdrop").classList.remove("open");
+    renderCVEditor();
+    toast("↺ גרסה שוחזרה");
+  } catch (e) { toast("❌ " + e.message, true); }
+};
+
+window.deleteRevision = async (revisionId) => {
+  if (!confirm("למחוק גרסה זו? לא ניתן לשחזר.")) return;
+  try {
+    await api("/api/cv-editor/delete-revision", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: CVE_STATE.profileId, cvId: CVE_STATE.cvId, revisionId }),
+    });
+    toast("🗑️ נמחק");
+    openRevisions();
+  } catch (e) { toast("❌ " + e.message, true); }
+};
+
+window.labelRevision = async (revisionId, currentLabel) => {
+  const label = prompt("תווית לגרסה:", currentLabel);
+  if (label === null) return;
+  try {
+    await api("/api/cv-editor/label-revision", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: CVE_STATE.profileId, cvId: CVE_STATE.cvId, revisionId, label: label.trim() }),
+    });
+    toast("🏷️ תווית עודכנה");
+    openRevisions();
+  } catch (e) { toast("❌ " + e.message, true); }
+};
+
+// ── AI Assistant: collapse toggle ──
+document.getElementById("cve-ai-collapse").addEventListener("click", () => {
+  const card = document.querySelector(".cve-ai-card");
+  card.classList.toggle("collapsed");
+  document.getElementById("cve-ai-collapse").textContent = card.classList.contains("collapsed") ? "▲" : "▼";
+});
+
+// ── Smart Add ──
+document.getElementById("cve-smart-add-btn").addEventListener("click", async () => {
+  const text = document.getElementById("cve-smart-text").value.trim();
+  if (!text) { toast("הזן טקסט תחילה", true); return; }
+  const btn = document.getElementById("cve-smart-add-btn");
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = "מנתח... <span class='spinner'></span>";
+  try {
+    const r = await api("/api/cv-editor/smart-add", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ structured: CVE_STATE.structured, text, language: CVE_STATE.lang }),
+    });
+    // Show preview modal
+    window._smartAddPending = r.updated;
+    document.getElementById("smart-add-preview").innerHTML = `
+      <div class="smart-add-summary">✨ ${escapeHtml(r.summary || "שינויים יוחלו")}</div>
+      <div class="muted" style="font-size:12px;margin-bottom:10px">השינויים יוחלו על ה-CV הנוכחי. הגרסה הקודמת תישמר בהיסטוריה אוטומטית.</div>
+      <details>
+        <summary style="cursor:pointer;color:var(--accent);font-size:13px">📋 ראה את ה-JSON המעודכן</summary>
+        <pre style="background:var(--bg);padding:12px;border-radius:8px;font-size:11px;overflow-x:auto;margin-top:8px;max-height:300px">${escapeHtml(JSON.stringify(r.updated, null, 2))}</pre>
+      </details>`;
+    document.getElementById("smart-add-modal-backdrop").classList.add("open");
+  } catch (e) { toast("❌ " + e.message, true); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+});
+
+document.getElementById("smart-add-close").addEventListener("click", () =>
+  document.getElementById("smart-add-modal-backdrop").classList.remove("open"));
+document.getElementById("smart-add-cancel").addEventListener("click", () =>
+  document.getElementById("smart-add-modal-backdrop").classList.remove("open"));
+
+document.getElementById("smart-add-apply").addEventListener("click", async () => {
+  if (!window._smartAddPending) return;
+  // Save current as revision first via the regular save endpoint (it auto-creates revision)
+  CVE_STATE.structured = window._smartAddPending;
+  try {
+    const r = await api("/api/cv-editor/save", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profileId: CVE_STATE.profileId, cvId: CVE_STATE.cvId,
+        language: CVE_STATE.lang, structured: CVE_STATE.structured,
+        label: "✨ Smart Add",
+      }),
+    });
+    document.getElementById("smart-add-modal-backdrop").classList.remove("open");
+    document.getElementById("cve-smart-text").value = "";
+    renderCVEditor();
+    updateRevCountBadge(r.revisions_count);
+    toast("✅ השינויים הוחלו ונשמרו");
+  } catch (e) { toast("❌ " + e.message, true); }
+});
+
+// ── Analyze CV (with auto-save + improve button) ──
+let CVE_LAST_ANALYSIS = null;
+
+document.getElementById("cve-analyze-btn").addEventListener("click", async () => {
+  if (!confirmCost("analyze")) return;
+  const btn = document.getElementById("cve-analyze-btn");
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = "מנתח... <span class='spinner'></span>";
+  openModal("🔍 ניתוח קורות החיים שלך", "מנתח... זה יקח 15-25 שניות", true);
+  currentFilename = `cv-analysis-${Date.now()}.md`;
+  try {
+    const r = await api("/api/cv-editor/analyze", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        structured: CVE_STATE.structured,
+        language: CVE_STATE.lang,
+        profileId: CVE_STATE.profileId,
+        cvId: CVE_STATE.cvId,
+      }),
+    });
+    CVE_LAST_ANALYSIS = { text: r.text, snapshot: CVE_STATE.structured };
+    setModalContent(r.text);
+    addImproveButtonToModal();
+    refreshAnalysesCount();
+    toast("✅ ניתוח נשמר בהיסטוריה");
+  } catch (e) {
+    setModalContent("❌ " + e.message);
+    toast("❌ " + e.message, true);
+  } finally { btn.disabled = false; btn.textContent = orig; }
+});
+
+function addImproveButtonToModal() {
+  // Add an "improve" button to the modal foot if not exists
+  const foot = document.querySelector("#modal-backdrop .modal-foot");
+  if (!foot) return;
+  if (foot.querySelector(".cve-improve-btn-modal")) return;
+  const btn = document.createElement("button");
+  btn.className = "btn primary cve-improve-btn-modal";
+  btn.textContent = "✨ צור גרסה משופרת מהניתוח";
+  btn.style.background = "linear-gradient(135deg, #a78bfa, #8b5cf6)";
+  btn.style.border = "none";
+  btn.style.marginRight = "auto";
+  btn.onclick = improveFromAnalysis;
+  foot.insertBefore(btn, foot.firstChild);
+}
+
+// Remove improve button from modal when modal opens for non-analysis content
+const _origOpenModal = openModal;
+function patchModal() {
+  // Strip improve button when modal closes / opens fresh
+  const close = document.getElementById("modal-close");
+  if (close) close.addEventListener("click", () => {
+    document.querySelectorAll(".cve-improve-btn-modal").forEach(b => b.remove());
+  });
+}
+patchModal();
+
+async function improveFromAnalysis() {
+  if (!CVE_LAST_ANALYSIS) return;
+  if (!confirmCost("improve")) return;
+  const btn = document.querySelector(".cve-improve-btn-modal");
+  if (btn) { btn.disabled = true; btn.innerHTML = "מייצר... <span class='spinner'></span>"; }
+  try {
+    const r = await api("/api/cv-editor/improve", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        structured: CVE_LAST_ANALYSIS.snapshot,
+        analysisText: CVE_LAST_ANALYSIS.text,
+        language: CVE_STATE.lang,
+      }),
+    });
+    window._improvedCV = r.improved;
+    document.getElementById("improve-preview").innerHTML = `
+      <div class="smart-add-summary" style="background:rgba(168,85,247,0.08);border-color:rgba(168,85,247,0.3);color:#a78bfa;border-right-color:#a78bfa">
+        ✨ ${escapeHtml(r.summary || "גרסה משופרת מוכנה")}
+      </div>
+      <div class="muted" style="font-size:12px;margin-bottom:14px">השיפורים יוחלו על ה-CV הנוכחי. הגרסה הקודמת תישמר בהיסטוריית הגרסאות אוטומטית.</div>
+      <details>
+        <summary style="cursor:pointer;color:var(--accent);font-size:13px">📋 ראה את ה-JSON המשופר</summary>
+        <pre style="background:var(--bg);padding:12px;border-radius:8px;font-size:11px;overflow-x:auto;margin-top:8px;max-height:300px">${escapeHtml(JSON.stringify(r.improved, null, 2))}</pre>
+      </details>`;
+    closeModal();
+    document.getElementById("improve-modal-backdrop").classList.add("open");
+  } catch (e) {
+    toast("❌ " + e.message, true);
+    if (btn) { btn.disabled = false; btn.textContent = "✨ צור גרסה משופרת מהניתוח"; }
+  }
+}
+
+document.getElementById("improve-close").addEventListener("click", () =>
+  document.getElementById("improve-modal-backdrop").classList.remove("open"));
+document.getElementById("improve-cancel").addEventListener("click", () =>
+  document.getElementById("improve-modal-backdrop").classList.remove("open"));
+document.getElementById("improve-apply").addEventListener("click", async () => {
+  if (!window._improvedCV) return;
+  CVE_STATE.structured = window._improvedCV;
+  try {
+    const r = await api("/api/cv-editor/save", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profileId: CVE_STATE.profileId, cvId: CVE_STATE.cvId,
+        language: CVE_STATE.lang, structured: CVE_STATE.structured,
+        label: "✨ שיפור מניתוח",
+      }),
+    });
+    document.getElementById("improve-modal-backdrop").classList.remove("open");
+    renderCVEditor();
+    updateRevCountBadge(r.revisions_count);
+    toast("✅ השיפורים הוחלו ונשמרו");
+  } catch (e) { toast("❌ " + e.message, true); }
+});
+
+// ── Past Analyses ──
+async function refreshAnalysesCount() {
+  if (!CVE_STATE.profileId) return;
+  try {
+    const r = await api(`/api/cv-editor/analyses?profileId=${encodeURIComponent(CVE_STATE.profileId)}&cvId=${encodeURIComponent(CVE_STATE.cvId)}&language=${CVE_STATE.lang}`);
+    const badge = document.getElementById("cve-analyses-count");
+    if (r.analyses.length > 0) {
+      badge.textContent = r.analyses.length;
+      badge.style.display = "inline-block";
+    } else {
+      badge.style.display = "none";
+    }
+  } catch {}
+}
+
+document.getElementById("cve-past-analyses-btn").addEventListener("click", openPastAnalyses);
+document.getElementById("analyses-close").addEventListener("click", () =>
+  document.getElementById("analyses-modal-backdrop").classList.remove("open"));
+document.getElementById("analyses-modal-backdrop").addEventListener("click", (e) => {
+  if (e.target.id === "analyses-modal-backdrop") e.target.classList.remove("open");
+});
+
+async function openPastAnalyses() {
+  const wrap = document.getElementById("analyses-list");
+  wrap.innerHTML = `<div class="ai-loading"><span class="spinner"></span><p>טוען...</p></div>`;
+  document.getElementById("analyses-modal-backdrop").classList.add("open");
+  try {
+    const r = await api(`/api/cv-editor/analyses?profileId=${encodeURIComponent(CVE_STATE.profileId)}&cvId=${encodeURIComponent(CVE_STATE.cvId)}&language=${CVE_STATE.lang}`);
+    if (!r.analyses.length) {
+      wrap.innerHTML = `<div class="empty" style="padding:30px"><p>📭 אין ניתוחים שמורים עדיין.</p><p class="muted" style="margin-top:8px">לחץ "🔍 נתח את ה-CV" — כל ניתוח נשמר אוטומטית.</p></div>`;
+      return;
+    }
+    wrap.innerHTML = r.analyses.map(a => `
+      <div class="rev-item">
+        <div class="rev-item-head">
+          <div class="rev-item-date">📅 ${fmtDate(a.created_at)}</div>
+          <span class="rev-item-lang">${a.language === "en" ? "🇬🇧 EN" : "🇮🇱 HE"}</span>
+        </div>
+        <div class="rev-item-actions">
+          <button onclick="viewAnalysis('${escapeAttr(a.id)}')">👁️ צפה</button>
+          <button class="danger" onclick="deleteAnalysis('${escapeAttr(a.id)}')">🗑️ מחק</button>
+        </div>
+      </div>`).join("");
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty" style="color:var(--f)">❌ ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+window.viewAnalysis = async (analysisId) => {
+  try {
+    const r = await api(`/api/cv-editor/analysis?profileId=${encodeURIComponent(CVE_STATE.profileId)}&cvId=${encodeURIComponent(CVE_STATE.cvId)}&id=${encodeURIComponent(analysisId)}`);
+    document.getElementById("analyses-modal-backdrop").classList.remove("open");
+    CVE_LAST_ANALYSIS = { text: r.analysis.text, snapshot: r.analysis.cv_snapshot };
+    openModal(`🔍 ניתוח מ-${fmtDate(r.analysis.created_at)}`, r.analysis.text);
+    addImproveButtonToModal();
+    currentFilename = `cv-analysis-${analysisId}.md`;
+  } catch (e) { toast("❌ " + e.message, true); }
+};
+
+window.deleteAnalysis = async (analysisId) => {
+  if (!confirm("למחוק ניתוח זה?")) return;
+  try {
+    await api("/api/cv-editor/analysis-delete", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: CVE_STATE.profileId, cvId: CVE_STATE.cvId, analysisId }),
+    });
+    toast("🗑️ נמחק");
+    openPastAnalyses();
+    refreshAnalysesCount();
+  } catch (e) { toast("❌ " + e.message, true); }
+};
+
+// ── Compact CV ──
+document.getElementById("cve-compact-btn").addEventListener("click", async () => {
+  if (!confirmCost("compact")) return;
+  const btn = document.getElementById("cve-compact-btn");
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = "מצמצם... <span class='spinner'></span>";
+  try {
+    const r = await api("/api/cv-editor/compact", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ structured: CVE_STATE.structured, language: CVE_STATE.lang }),
+    });
+    window._compactCV = r.structured;
+    // Show preview with stats
+    const orig_size = JSON.stringify(CVE_STATE.structured).length;
+    const new_size = JSON.stringify(r.structured).length;
+    const reduction = Math.round((1 - new_size / orig_size) * 100);
+    document.getElementById("compact-preview").innerHTML = `
+      <div class="smart-add-summary" style="background:rgba(77,159,255,0.08);border-color:rgba(77,159,255,0.3);color:var(--accent);border-right-color:var(--accent)">
+        🎯 הגרסה צומצמה ב-${reduction}% (${(orig_size/1024).toFixed(1)}KB → ${(new_size/1024).toFixed(1)}KB)
+      </div>
+      <div class="muted" style="font-size:12px;margin-bottom:14px">
+        AI שמר על כל המידע הקריטי, צמצם תיאורים, השאיר את הbullets החשובים, וקיצר ניסיון ישן יותר.
+        <br>הגרסה המקוצרת לא תוחל על ה-CV — היא רק להורדה.
+      </div>
+      <div style="background:var(--bg);padding:14px;border-radius:8px;font-size:13px;line-height:1.6">
+        <b>${escapeHtml(r.structured.header?.name || "")}</b><br>
+        <span class="muted">${escapeHtml(r.structured.header?.title || "")}</span><br><br>
+        <b>📋 תקציר:</b> ${escapeHtml((r.structured.summary || "").slice(0, 200))}${(r.structured.summary || "").length > 200 ? "..." : ""}<br>
+        <b>💼 משרות:</b> ${r.structured.experience?.length || 0}<br>
+        <b>🎓 השכלה:</b> ${r.structured.education?.length || 0}<br>
+        <b>🛠️ קטגוריות כישורים:</b> ${r.structured.skills?.length || 0}<br>
+        <b>🚀 פרויקטים:</b> ${r.structured.projects?.length || 0}<br>
+      </div>`;
+    document.getElementById("compact-modal-backdrop").classList.add("open");
+    toast("✅ גרסה מקוצרת מוכנה");
+  } catch (e) { toast("❌ " + e.message, true); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+});
+
+document.getElementById("compact-close").addEventListener("click", () =>
+  document.getElementById("compact-modal-backdrop").classList.remove("open"));
+
+window.cveDownloadCompact = async (format) => {
+  if (!window._compactCV) return;
+  try {
+    const r = await fetch("/api/cv-editor/generate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ structured: window._compactCV, format }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error);
+    const blob = await r.blob();
+    const name = window._compactCV.header?.name || "resume";
+    downloadBlob(blob, `CV-${name}-COMPACT-${CVE_STATE.lang}.${format}`);
+    toast(`✅ הורד מקוצר .${format}`);
+  } catch (e) { toast("❌ " + e.message, true); }
+};
 
 window.cveDownload = async (format) => {
   try {

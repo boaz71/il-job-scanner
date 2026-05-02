@@ -159,6 +159,28 @@
     </div>
   </div>
 
+  <div id="cve-ai-panel" style="display:none">
+    <div class="cve-ai-card">
+      <div class="cve-ai-head">
+        <span class="cve-ai-icon">🤖</span>
+        <div>
+          <h3 style="margin:0;font-size:15px">עוזר AI לשידרוג ה-CV</h3>
+          <span class="muted" style="font-size:12px">תוסיף מלל חופשי וAI יוסיף לאן שצריך, או נתח את ה-CV הנוכחי</span>
+        </div>
+        <button class="cve-ai-toggle" id="cve-ai-collapse" title="כווץ">▼</button>
+      </div>
+      <div class="cve-ai-body" id="cve-ai-body">
+        <textarea id="cve-smart-text" rows="3" placeholder="לדוגמה: 'עבדתי בגוגל כ-Senior Backend ב-2022-2024 על Search, הובלתי מיגרציה של 5 שירותים ל-K8s' או 'למדתי קורס AWS Solutions Architect ב-2023' או 'הוסף את GraphQL ל-skills'"></textarea>
+        <div class="cve-ai-actions">
+          <button class="btn primary" id="cve-smart-add-btn">✨ הוסף בחוכמה</button>
+          <button class="btn" id="cve-analyze-btn">🔍 נתח את ה-CV</button>
+          <button class="btn" id="cve-past-analyses-btn">📜 ניתוחים קודמים <span id="cve-analyses-count" class="cve-rev-badge" style="display:none">0</span></button>
+          <span class="muted" style="font-size:11px;margin-right:auto">~$0.02 לפעולה</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="cve-content"><div class="empty">טוען...</div></div>
 
   <div class="cve-download-bar" id="cve-download-bar" style="display:none">
@@ -166,9 +188,79 @@
     <button class="btn" onclick="cveDownload('md')">💾 .MD</button>
     <button class="btn" onclick="cveDownload('docx')">📄 .DOCX</button>
     <button class="btn primary" onclick="cveDownload('pdf')">📕 .PDF</button>
+    <button class="btn" id="cve-compact-btn" title="גרסה מקוצרת — עד 2 עמודים">🎯 מקוצר</button>
+    <button class="btn" id="cve-revisions-btn">📚 גרסאות <span id="cve-rev-count" class="cve-rev-badge" style="display:none">0</span></button>
     <button class="btn" id="cve-save-btn">💾 שמור שינויים</button>
   </div>
 </section>
+
+<!-- Past Analyses modal -->
+<div class="modal-backdrop" id="analyses-modal-backdrop">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-head">
+      <h3>📜 ניתוחים קודמים</h3>
+      <button class="icon-btn" id="analyses-close">✕</button>
+    </div>
+    <div class="modal-body" id="analyses-list" style="font-family:inherit;white-space:normal;padding:18px"></div>
+  </div>
+</div>
+
+<!-- Improved CV preview modal -->
+<div class="modal-backdrop" id="improve-modal-backdrop">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-head">
+      <h3>✨ גרסה משופרת על בסיס הניתוח</h3>
+      <button class="icon-btn" id="improve-close">✕</button>
+    </div>
+    <div class="modal-body" id="improve-preview" style="font-family:inherit;white-space:normal;padding:20px"></div>
+    <div class="modal-foot">
+      <button class="btn" id="improve-cancel">ביטול</button>
+      <button class="btn primary" id="improve-apply">✅ החל את השיפורים</button>
+    </div>
+  </div>
+</div>
+
+<!-- Smart Add preview modal -->
+<div class="modal-backdrop" id="smart-add-modal-backdrop">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-head">
+      <h3>✨ תצוגה מקדימה — מה ייווסף</h3>
+      <button class="icon-btn" id="smart-add-close">✕</button>
+    </div>
+    <div class="modal-body" id="smart-add-preview" style="font-family:inherit;white-space:normal;padding:20px"></div>
+    <div class="modal-foot">
+      <button class="btn" id="smart-add-cancel">ביטול</button>
+      <button class="btn primary" id="smart-add-apply">✅ החל את השינויים</button>
+    </div>
+  </div>
+</div>
+
+<!-- Compact preview modal -->
+<div class="modal-backdrop" id="compact-modal-backdrop">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-head">
+      <h3>🎯 גרסה מקוצרת — מוכנה להורדה</h3>
+      <button class="icon-btn" id="compact-close">✕</button>
+    </div>
+    <div class="modal-body" id="compact-preview" style="font-family:inherit;white-space:normal;padding:20px"></div>
+    <div class="modal-foot">
+      <button class="btn" onclick="cveDownloadCompact('md')">💾 .MD</button>
+      <button class="btn" onclick="cveDownloadCompact('docx')">📄 .DOCX</button>
+      <button class="btn primary" onclick="cveDownloadCompact('pdf')">📕 .PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Revisions modal -->
+<div class="modal-backdrop" id="revisions-modal-backdrop">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-head">
+      <h3>📚 היסטוריית גרסאות</h3>
+      <button class="icon-btn" id="revisions-close">✕</button>
+    </div>
+    <div class="modal-body" id="revisions-list" style="font-family:inherit;white-space:normal;padding:18px"></div>
+  </div>
+</div>
 
 <!-- ═══════════════ MENTOR TAB ═══════════════ -->
 <section class="page" id="page-mentor">
