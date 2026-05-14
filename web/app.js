@@ -7,26 +7,39 @@ let TRACKED = [];
 let TRACKED_IDS = new Set();
 
 // ═══════════════ Cost guard ═══════════════
+// Realistic cost estimates based on actual usage (web_search adds ~$0.10-0.20 per call)
 const EXPENSIVE_OPS = {
-  "deep-dive": { cost: "$0.04", time: "20-30s", web: true },
-  "interview-prep": { cost: "$0.03", time: "20-40s", web: true },
-  "salary": { cost: "$0.03", time: "15-25s", web: true },
-  "skill-gap": { cost: "$0.02", time: "15-25s", web: true },
-  "ai-opportunities": { cost: "$0.04", time: "30-60s", web: true },
-  "wlb-ranking": { cost: "$0.04", time: "30-60s", web: true },
-  "company-dive": { cost: "$0.04", time: "20-30s", web: true },
-  "github-analysis": { cost: "$0.03", time: "15-25s", web: false },
-  "compact": { cost: "$0.02", time: "15-25s", web: false },
-  "improve": { cost: "$0.025", time: "15-25s", web: false },
-  "analyze": { cost: "$0.015", time: "15-25s", web: false },
-  "profile-insights": { cost: "$0.03", time: "15-25s", web: true },
+  "deep-dive":         { cost: "$0.10-0.20", time: "20-40s", web: true },
+  "interview-prep":    { cost: "$0.10-0.20", time: "20-40s", web: true },
+  "salary":            { cost: "$0.10-0.20", time: "15-30s", web: true },
+  "skill-gap":         { cost: "$0.08-0.15", time: "15-30s", web: true },
+  "ai-opportunities":  { cost: "$0.20-0.30", time: "30-60s", web: true },
+  "wlb-ranking":       { cost: "$0.20-0.30", time: "30-60s", web: true },
+  "company-dive":      { cost: "$0.10-0.20", time: "20-40s", web: true },
+  "github-analysis":   { cost: "$0.02-0.05", time: "15-25s", web: false },
+  "compact":           { cost: "$0.02-0.05", time: "15-25s", web: false },
+  "improve":           { cost: "$0.03-0.06", time: "15-25s", web: false },
+  "analyze":           { cost: "$0.02-0.04", time: "15-25s", web: false },
+  "profile-insights":  { cost: "$0.10-0.20", time: "15-30s", web: true },
 };
 
 function confirmCost(opType) {
   const info = EXPENSIVE_OPS[opType];
   if (!info) return true;
-  const webNote = info.web ? " (כולל חיפוש באינטרנט)" : "";
-  return confirm(`💰 פעולה זו תעלה ~${info.cost} (Claude API)${webNote}\n⏱️ זמן משוער: ${info.time}\n\nלהמשיך?`);
+  const webNote = info.web ? "\n⚠️ כולל חיפוש באינטרנט (יקר במיוחד)" : "";
+  return confirm(`💰 עלות משוערת: ${info.cost}${webNote}\n⏱️ זמן משוער: ${info.time}\n\nלהמשיך?`);
+}
+
+// Show actual cost after AI operation (fetches from costs API)
+async function reportActualCost(opType) {
+  try {
+    const r = await api("/api/costs");
+    const last = r.entries?.[0];
+    if (last && !last.cached && last.estimated_cost > 0.01) {
+      const today = r.last_7_days || 0;
+      toast(`💰 פעולה זו עלתה $${last.estimated_cost.toFixed(3)} · סה"כ 7 ימים: $${today.toFixed(2)}`);
+    }
+  } catch {}
 }
 
 // ═══════════════ API helpers ═══════════════
@@ -468,6 +481,7 @@ window.generate = async (type, jobId, jobTitle, company, opts = {}) => {
       body: JSON.stringify(body),
     });
     setModalContent(r.text);
+    reportActualCost(type);
   } catch (err) {
     setModalContent("❌ " + err.message);
     toast("❌ " + err.message, true);
@@ -1013,6 +1027,7 @@ document.getElementById("analyze-profile-btn").addEventListener("click", async (
     });
     ACTIVE_PROFILE.insights = r.insights;
     toast(`✅ ניתוח הושלם: ציון שוק ${r.insights.market_score}/100`);
+    reportActualCost("profile-insights");
     loadProfilePage();
   } catch (err) { toast("❌ " + err.message, true); }
   finally { btn.disabled = false; btn.textContent = orig; }
@@ -1175,7 +1190,10 @@ window.deleteScan = async (id) => {
 async function loadCostDashboard() {
   const wrap = document.getElementById("cost-dashboard");
   try {
-    const c = await api("/api/costs");
+    const [c, llm] = await Promise.all([
+      api("/api/costs"),
+      api("/api/llm-info").catch(() => null),
+    ]);
     const typeLabels = {
       "cover-letter": "✉️ מכתב",
       "cv": "📝 קו\"ח",
@@ -1193,7 +1211,24 @@ async function loadCostDashboard() {
       return `<span class="muted">${label}: ${v.calls}× ($${v.cost.toFixed(3)})</span>`;
     }).join(" · ");
 
+    const providerBadge = llm ? `
+      <div style="background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em">פעולות זולות</span>
+          <div style="font-weight:600;font-size:14px">
+            ${llm.cheap_provider === "anthropic" ? "🟣 Anthropic " + llm.anthropic_model :
+              llm.cheap_provider === "gemini" ? "🟡 Gemini " + llm.gemini_model + (llm.gemini_configured ? "" : " ⚠️ אין מפתח") :
+              "🦙 Ollama " + llm.ollama_model}
+          </div>
+        </div>
+        <div>
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em">פעולות עם web search</span>
+          <div style="font-weight:600;font-size:14px">🟣 Anthropic ${llm.anthropic_model}</div>
+        </div>
+      </div>` : "";
+
     wrap.innerHTML = `
+      ${providerBadge}
       <div class="stat-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:12px">
         <div class="stat-card" style="padding:12px">
           <div class="stat-label">עלות כוללת</div>
@@ -1555,6 +1590,7 @@ document.getElementById("wlb-deep-btn").addEventListener("click", async () => {
   btn.innerHTML = "מחפש ברשת... <span class='spinner'></span>";
   try {
     const r = await api("/api/wlb-ranking");
+    reportActualCost("wlb-ranking");
     openModal("⚖️ דוח WLB מעמיק (AI + חיפוש)", "טוען...", true);
     setModalContent(r.text);
     currentFilename = `WLB-Deep-Report-${new Date().toISOString().slice(0,10)}.md`;
@@ -1610,6 +1646,7 @@ document.getElementById("ai-refresh-btn").addEventListener("click", async () => 
     const r = await api("/api/ai-opportunities?force=1");
     showAIContent(r.text);
     toast("✅ דוח AI עודכן");
+    reportActualCost("ai-opportunities");
   } catch (e) {
     report.innerHTML = `<div class="ai-loading" style="color:var(--f)">❌ ${escapeHtml(e.message)}</div>`;
     toast("❌ " + e.message, true);

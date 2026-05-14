@@ -31,9 +31,7 @@ export function loadEnv(): void {
       value = value.slice(1, -1);
     }
 
-    // Don't override if already set in real env (but treat empty string as unset)
-    if (!process.env[key]) {
-      process.env[key] = value;
-    }
+    // Last occurrence in .env wins (so users can override earlier values by adding lines at the bottom)
+    process.env[key] = value;
   }
 }

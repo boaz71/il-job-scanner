@@ -6,6 +6,7 @@ import mammoth from "mammoth";
 import type { Job, Profile } from "./types.js";
 import { getCached, setCache } from "./cache.js";
 import { logCost, checkBudget } from "./costs.js";
+import { llmGenerate, type LLMMessage } from "./llm.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -20,14 +21,46 @@ function cheapModel(): string {
 }
 
 // Wrapper that handles caching + cost tracking
+// Helper for non-cached LLM calls — routes through llmGenerate with budget check
+async function llmCall(opts: {
+  type: string;
+  maxTokens: number;
+  messages: { role: "user" | "assistant"; content: string }[];
+  system?: string;
+  webSearch?: boolean;
+}): Promise<string> {
+  const budget = checkBudget();
+  if (!budget.ok) throw new Error(budget.message || "הגעת לתקציב היומי");
+
+  const webDisabled = process.env.DISABLE_WEB_SEARCH === "1";
+  const useWebSearch = opts.webSearch && !webDisabled;
+
+  const response = await llmGenerate({
+    maxTokens: opts.maxTokens,
+    messages: opts.messages,
+    system: opts.system,
+    webSearch: useWebSearch,
+    forceProvider: useWebSearch ? "anthropic" : undefined,
+  });
+
+  logCost(opts.type, response.model, response.input_tokens, response.output_tokens, response.web_search_used, false);
+  return response.text;
+}
+
 async function cachedGenerate(opts: {
   type: string;
   cacheKey: string[];
-  model: string;
+  model: string;       // legacy field — kept for backward compat
   maxTokens: number;
   messages: Anthropic.Messages.MessageParam[];
   system?: string;
   webSearch?: boolean;
+  // Phase 1b pilot flag: opt this individual call into the Growbytes AI Gateway
+  // transport via llm.ts's "gateway" provider. Honored only when the request
+  // is gateway-eligible (no web search). If the gateway is unreachable,
+  // llmGenerate's Phase 1a fallback engages automatically and the call lands
+  // on the normal direct-provider path. Default behavior unchanged when unset.
+  viaLlmRouter?: boolean;
 }): Promise<string> {
   // Check cache first
   const cached = getCached(opts.type, ...opts.cacheKey);
@@ -36,30 +69,38 @@ async function cachedGenerate(opts: {
     return cached;
   }
 
-  // Budget check (only blocks new API calls, not cached)
   const budget = checkBudget();
-  if (!budget.ok) {
-    throw new Error(budget.message || "הגעת לתקציב היומי");
-  }
+  if (!budget.ok) throw new Error(budget.message || "הגעת לתקציב היומי");
 
-  // Web search opt-out via env
   const webDisabled = process.env.DISABLE_WEB_SEARCH === "1";
   const useWebSearch = opts.webSearch && !webDisabled;
 
-  const anthropic = client();
-  const tools = useWebSearch ? [WEB_SEARCH_TOOL] : undefined;
-  const msg = await anthropic.messages.create({
-    model: opts.model,
-    max_tokens: opts.maxTokens,
-    messages: opts.messages,
-    ...(opts.system ? { system: opts.system } : {}),
-    ...(tools ? { tools } : {}),
+  // Convert messages
+  const messages: LLMMessage[] = opts.messages.map(m => ({
+    role: m.role as "user" | "assistant",
+    content: typeof m.content === "string" ? m.content : "",
+  }));
+
+  // Routing logic:
+  // - viaLlmRouter pilot flag (Phase 1b) → force "gateway" when eligible
+  // - Web search needed → Anthropic (only one with native support)
+  // - Otherwise → cheap provider (LLM_CHEAP_PROVIDER) — Gemini/Ollama/Anthropic-Haiku
+  const preferGateway = !!opts.viaLlmRouter && !useWebSearch;
+  const forceProvider = preferGateway
+    ? "gateway"
+    : (useWebSearch ? "anthropic" : undefined);
+
+  const response = await llmGenerate({
+    maxTokens: opts.maxTokens,
+    messages,
+    system: opts.system,
+    webSearch: useWebSearch,
+    forceProvider,
   });
 
-  const text = extractText(msg);
-  logCost(opts.type, opts.model, msg.usage.input_tokens, msg.usage.output_tokens, !!useWebSearch, false);
-  setCache(opts.type, text, !!useWebSearch, ...opts.cacheKey);
-  return text;
+  logCost(opts.type, response.model, response.input_tokens, response.output_tokens, response.web_search_used, false);
+  setCache(opts.type, response.text, response.web_search_used, ...opts.cacheKey);
+  return response.text;
 }
 
 function client(): Anthropic {
@@ -71,7 +112,7 @@ function client(): Anthropic {
 }
 
 // Web search tool for getting current information
-const WEB_SEARCH_TOOL = { type: "web_search_20250305" as const, name: "web_search" as const, max_uses: 5 };
+const WEB_SEARCH_TOOL = { type: "web_search_20250305" as const, name: "web_search" as const, max_uses: 3 };
 
 // Extract final text from a response that may contain web search results
 function extractText(msg: Anthropic.Messages.Message): string {
@@ -128,10 +169,9 @@ export function loadCV(): string | null {
 
 // ── Extract profile from CV using Claude ──
 export async function extractProfile(cvText: string): Promise<Profile> {
-  const anthropic = client();
-  const msg = await anthropic.messages.create({
-    model: model(),
-    max_tokens: 1500,
+  const fullText = await llmCall({
+    type: "extract-profile",
+    maxTokens: 1500,
     messages: [
       {
         role: "user",
@@ -167,7 +207,6 @@ ${cvText}
     ],
   });
 
-  const fullText = extractText(msg);
   const match = fullText.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("לא נמצא JSON בתשובה");
 
@@ -191,11 +230,10 @@ export interface ProfileInsightsResult {
 }
 
 export async function analyzeProfile(cvText: string): Promise<ProfileInsightsResult> {
-  const anthropic = client();
-  const msg = await anthropic.messages.create({
-    model: model(),
-    max_tokens: 3000,
-    tools: [WEB_SEARCH_TOOL],
+  const fullText = await llmCall({
+    type: "profile-insights",
+    maxTokens: 3000,
+    webSearch: true,
     messages: [
       {
         role: "user",
@@ -239,7 +277,6 @@ ${cvText}
     ],
   });
 
-  const fullText = extractText(msg);
   const match = fullText.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("לא נמצא JSON בתשובה");
   return JSON.parse(match[0]) as ProfileInsightsResult;
@@ -255,10 +292,9 @@ function langLabel(l: Lang): string {
 }
 
 export async function generateTailoredCV(cvText: string, job: Job, lang: Lang = "auto"): Promise<string> {
-  const anthropic = client();
-  const msg = await anthropic.messages.create({
-    model: model(),
-    max_tokens: 3000,
+  return llmCall({
+    type: "cv-tailored",
+    maxTokens: 3000,
     messages: [
       {
         role: "user",
@@ -284,18 +320,14 @@ ${job.description.replace(/<[^>]+>/g, " ").slice(0, 4000)}
       },
     ],
   });
-  const content = msg.content[0];
-  if (content.type !== "text") throw new Error("תשובה לא תקינה");
-  return content.text;
 }
 
 // ── Generate interview preparation for a job ──
 export async function generateInterviewPrep(cvText: string, job: Job): Promise<string> {
-  const anthropic = client();
-  const msg = await anthropic.messages.create({
-    model: model(),
-    max_tokens: 4000,
-    tools: [WEB_SEARCH_TOOL],
+  return llmCall({
+    type: "interview-prep",
+    maxTokens: 4000,
+    webSearch: true,
     messages: [
       {
         role: "user",
@@ -360,18 +392,14 @@ ${job.description.replace(/<[^>]+>/g, " ").slice(0, 4000)}
       },
     ],
   });
-  const content = msg.content[0];
-  if (content.type !== "text") throw new Error("תשובה לא תקינה");
-  return content.text;
 }
 
 // ── Skill gap analysis for a specific job ──
 export async function analyzeSkillGap(cvText: string, job: Job): Promise<string> {
-  const anthropic = client();
-  const msg = await anthropic.messages.create({
-    model: model(),
-    max_tokens: 2500,
-    tools: [WEB_SEARCH_TOOL],
+  return llmCall({
+    type: "skill-gap",
+    maxTokens: 2500,
+    webSearch: true,
     messages: [{
       role: "user",
       content: `התאריך היום: ${TODAY()}.
@@ -411,16 +439,14 @@ ${job.description.replace(/<[^>]+>/g, " ").slice(0, 4000)}
 ענייני, פרקטי, ללא קלישאות. החזר רק את המסמך.`,
     }],
   });
-  return extractText(msg);
 }
 
 // ── Salary negotiation prep ──
 export async function generateSalaryPrep(cvText: string, job: Job): Promise<string> {
-  const anthropic = client();
-  const msg = await anthropic.messages.create({
-    model: model(),
-    max_tokens: 2500,
-    tools: [WEB_SEARCH_TOOL],
+  return llmCall({
+    type: "salary-prep",
+    maxTokens: 2500,
+    webSearch: true,
     messages: [{
       role: "user",
       content: `התאריך היום: ${TODAY()}.
@@ -474,7 +500,6 @@ ${job.description.replace(/<[^>]+>/g, " ").slice(0, 3000)}
 ענייני, ישיר, בעל מספרים אמיתיים. בלי קלישאות. החזר רק את המסמך.`,
     }],
   });
-  return extractText(msg);
 }
 
 // ── Mock interview chat ──
@@ -506,26 +531,28 @@ ${cvText.slice(0, 3000)}
 - הכל בעברית.
 - אל תכתוב "אני מראיין", פשוט תפעל כמראיין.`;
 
-  const messages = history.length === 0
-    ? [{ role: "user" as const, content: "בוא נתחיל את הראיון." }]
-    : history;
+  const budget = checkBudget();
+  if (!budget.ok) throw new Error(budget.message || "הגעת לתקציב היומי");
 
-  const msg = await anthropic.messages.create({
-    model: model(),
-    max_tokens: 1000,
+  const messages: LLMMessage[] = history.length === 0
+    ? [{ role: "user", content: "בוא נתחיל את הראיון." }]
+    : history.map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+  const response = await llmGenerate({
+    maxTokens: 1000,
     system: systemPrompt,
     messages,
   });
-  return extractText(msg);
+  logCost("mock-interview", response.model, response.input_tokens, response.output_tokens, false, false);
+  return response.text;
 }
 
 // ── Company deep dive (with web search for current data) ──
 export async function companyDeepDive(companyName: string, jobsContext: string): Promise<string> {
-  const anthropic = client();
-  const msg = await anthropic.messages.create({
-    model: model(),
-    max_tokens: 4000,
-    tools: [WEB_SEARCH_TOOL],
+  return llmCall({
+    type: "company-dive",
+    maxTokens: 4000,
+    webSearch: true,
     messages: [{
       role: "user",
       content: `התאריך היום: ${TODAY()}.
@@ -581,7 +608,6 @@ ${jobsContext.slice(0, 2000)}
 **חשוב:** ציין מקורות למידע שמצאת. אם מידע מסוים לא עדכני — ציין את זה.`,
     }],
   });
-  return extractText(msg);
 }
 
 // ── LinkedIn outreach message ──
@@ -628,12 +654,17 @@ ${cvText.slice(0, 2000)}
 }
 
 // ── Follow-up email ──
+// Phase 1b pilot: this is the only function that opts into the AI Gateway
+// transport via viaLlmRouter. Quality-degradation risk is lowest here because
+// the user edits the resulting email before sending. See docs/phase1b for the
+// rationale and test plan.
 export async function generateFollowUp(cvText: string, job: Job, daysSinceApplied: number): Promise<string> {
   return cachedGenerate({
     type: "followup",
     cacheKey: [job.id, String(daysSinceApplied)],
     model: cheapModel(),
     maxTokens: 800,
+    viaLlmRouter: true,
     messages: [{
       role: "user",
       content: `קורות חיים של המועמד:
@@ -1307,21 +1338,20 @@ ${cvSnippet}
     ? [{ role: "user" as const, content: userMessage }]
     : [...ctx.conversationHistory.map(m => ({ role: m.role, content: m.content })), { role: "user" as const, content: userMessage }];
 
-  // Budget check
   const budget = checkBudget();
   if (!budget.ok) throw new Error(budget.message || "הגעת לתקציב היומי");
 
-  const useModel = cheapModel();
-  const msg = await anthropic.messages.create({
-    model: useModel,
-    max_tokens: 800,
+  const llmMessages: LLMMessage[] = messages.map(m => ({
+    role: m.role as "user" | "assistant",
+    content: typeof m.content === "string" ? m.content : "",
+  }));
+  const response = await llmGenerate({
+    maxTokens: 800,
     system: systemPrompt,
-    messages,
+    messages: llmMessages,
   });
-
-  const text = extractText(msg);
-  logCost("mentor", useModel, msg.usage.input_tokens, msg.usage.output_tokens, false, false);
-  return text;
+  logCost("mentor", response.model, response.input_tokens, response.output_tokens, false, false);
+  return response.text;
 }
 
 // ── GitHub portfolio analysis ──

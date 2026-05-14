@@ -673,6 +673,19 @@ const server = createServer(async (req, res) => {
       return sendJSON(res, 200, { ok: true, text, cached: false });
     }
 
+    // ── LLM provider info ──
+    if (pathname === "/api/llm-info" && method === "GET") {
+      const { activeProviderForCheap } = await import("./llm.js");
+      return sendJSON(res, 200, {
+        cheap_provider: activeProviderForCheap(),
+        anthropic_model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5",
+        gemini_model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+        ollama_model: process.env.OLLAMA_MODEL || "llama3.1:8b",
+        gemini_configured: !!process.env.GEMINI_API_KEY,
+        ollama_url: process.env.OLLAMA_URL || "http://localhost:11434",
+      });
+    }
+
     // ── Costs & cache ──
     if (pathname === "/api/costs" && method === "GET") {
       const summary = getCostSummary();

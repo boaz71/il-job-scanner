@@ -6,14 +6,39 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const FILE = resolve(ROOT, "data/costs.json");
 
-// Approximate token costs ($/1M tokens) — Anthropic pricing 2026
+// Approximate token costs ($/1M tokens)
 const PRICING: Record<string, { input: number; output: number }> = {
-  "claude-sonnet-4-5":  { input: 3, output: 15 },
-  "claude-sonnet-4-6":  { input: 3, output: 15 },
-  "claude-haiku-3-5":   { input: 0.8, output: 4 },
-  "claude-haiku-3.5":   { input: 0.8, output: 4 },
+  // Anthropic
+  "claude-sonnet-4-5":   { input: 3, output: 15 },
+  "claude-sonnet-4-6":   { input: 3, output: 15 },
+  "claude-haiku-3-5":    { input: 0.8, output: 4 },
+  "claude-haiku-3.5":    { input: 0.8, output: 4 },
+  // Gemini
+  "gemini-1.5-flash":    { input: 0.075, output: 0.30 },
+  "gemini-2.0-flash":    { input: 0.10, output: 0.40 },
+  "gemini-2.5-flash":    { input: 0.15, output: 0.60 },
+  // Ollama (local) — free
+  "llama3.1:8b":         { input: 0, output: 0 },
+  "llama3.2:3b":         { input: 0, output: 0 },
+  "qwen2.5:7b":          { input: 0, output: 0 },
+  "qwen2.5:14b":         { input: 0, output: 0 },
+  "phi3.5":              { input: 0, output: 0 },
+  "phi3.5:mini":         { input: 0, output: 0 },
 };
-const WEB_SEARCH_COST_PER_QUERY = 0.01; // rough estimate
+const WEB_SEARCH_COST_PER_QUERY = 0.01;
+
+function getPricing(model: string) {
+  if (PRICING[model]) return PRICING[model];
+  // Auto-detect: if model name starts with a known prefix
+  if (model.startsWith("gemini")) return { input: 0.10, output: 0.40 };
+  if (model.startsWith("claude-haiku")) return { input: 0.8, output: 4 };
+  if (model.startsWith("claude")) return { input: 3, output: 15 };
+  // Local models (Ollama uses :tag suffix usually)
+  if (model.includes(":") || model.startsWith("llama") || model.startsWith("qwen") || model.startsWith("phi")) {
+    return { input: 0, output: 0 };
+  }
+  return { input: 3, output: 15 }; // unknown — assume Sonnet pricing
+}
 
 export interface CostEntry {
   at: string;
@@ -82,7 +107,7 @@ function save(entries: CostEntry[]) {
 }
 
 export function logCost(type: string, model: string, inputTokens: number, outputTokens: number, webSearch: boolean, cached: boolean): CostEntry {
-  const pricing = PRICING[model] || PRICING["claude-sonnet-4-5"];
+  const pricing = getPricing(model);
   let cost = 0;
   if (!cached) {
     cost = (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000;
