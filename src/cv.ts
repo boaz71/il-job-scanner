@@ -28,12 +28,17 @@ async function llmCall(opts: {
   messages: { role: "user" | "assistant"; content: string }[];
   system?: string;
   webSearch?: boolean;
+  // Critical web-dependent features (live salary data, market trends, company
+  // research) set this to keep web search + cloud provider even when the global
+  // DISABLE_WEB_SEARCH switch is on. Without it, these would fall to the local
+  // gateway model with no internet and fabricate data.
+  forceWeb?: boolean;
 }): Promise<string> {
   const budget = checkBudget();
   if (!budget.ok) throw new Error(budget.message || "הגעת לתקציב היומי");
 
   const webDisabled = process.env.DISABLE_WEB_SEARCH === "1";
-  const useWebSearch = opts.webSearch && !webDisabled;
+  const useWebSearch = !!opts.webSearch && (!webDisabled || !!opts.forceWeb);
 
   const response = await llmGenerate({
     maxTokens: opts.maxTokens,
@@ -234,6 +239,7 @@ export async function analyzeProfile(cvText: string): Promise<ProfileInsightsRes
     type: "profile-insights",
     maxTokens: 3000,
     webSearch: true,
+    forceWeb: true,
     messages: [
       {
         role: "user",
@@ -447,6 +453,7 @@ export async function generateSalaryPrep(cvText: string, job: Job): Promise<stri
     type: "salary-prep",
     maxTokens: 2500,
     webSearch: true,
+    forceWeb: true,
     messages: [{
       role: "user",
       content: `התאריך היום: ${TODAY()}.
@@ -553,6 +560,7 @@ export async function companyDeepDive(companyName: string, jobsContext: string):
     type: "company-dive",
     maxTokens: 4000,
     webSearch: true,
+    forceWeb: true,
     messages: [{
       role: "user",
       content: `התאריך היום: ${TODAY()}.
@@ -664,7 +672,6 @@ export async function generateFollowUp(cvText: string, job: Job, daysSinceApplie
     cacheKey: [job.id, String(daysSinceApplied)],
     model: cheapModel(),
     maxTokens: 800,
-    viaLlmRouter: true,
     messages: [{
       role: "user",
       content: `קורות חיים של המועמד:

@@ -108,6 +108,12 @@ async function callGeminiOnce(req: LLMRequest, model: string, key: string): Prom
     contents,
     generationConfig: { maxOutputTokens: req.maxTokens },
   };
+  // Gemini 2.5 models enable "thinking" by default, and thinking tokens count
+  // against maxOutputTokens — on small budgets the reply gets truncated before
+  // the JSON closes. We need structured output, not reasoning, so disable it.
+  if (model.includes("2.5")) {
+    body.generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  }
   if (req.system) body.systemInstruction = { parts: [{ text: req.system }] };
 
   const res = await fetch(url, {
