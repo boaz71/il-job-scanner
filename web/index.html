@@ -30,11 +30,16 @@
     <button class="tab" data-tab="history">🗄️ היסטוריה</button>
     <button class="tab" data-tab="automation">⚙️ הגדרות</button>
   </nav>
+  <label class="test-mode-toggle" title="מצב טסט: כל קריאות ה-AI עוברות למודל המקומי (Ollama) — אפס עלות. האיכות נמוכה יותר.">
+    <input type="checkbox" id="test-mode-checkbox">
+    <span class="test-mode-label">🧪 טסט</span>
+  </label>
   <div class="profile-switcher">
     <select id="profile-select"></select>
     <button id="manage-profiles-btn" title="ניהול פרופילים">⚙️</button>
   </div>
 </header>
+<div id="test-mode-banner">🧪 מצב טסט פעיל — כל קריאות ה-AI רצות על המודל המקומי (Ollama), ללא עלות. האיכות נמוכה יותר מהענן.</div>
 
 <!-- ═══════════════ JOBS TAB ═══════════════ -->
 <section class="page" id="page-jobs">

@@ -54,6 +54,19 @@ const MIME: Record<string, string> = {
 
 const PORT = Number(process.env.PORT) || 5174;
 
+// ── Test mode (route all AI through the local model, zero cost) ──
+// Persisted so it survives restarts; mirrored into LLM_TEST_MODE which llm.ts
+// reads at call time.
+const TEST_MODE_FILE = resolve(ROOT, "data/test-mode.json");
+function loadTestMode(): boolean {
+  try { return JSON.parse(readFileSync(TEST_MODE_FILE, "utf-8")).enabled === true; }
+  catch { return false; }
+}
+function saveTestMode(enabled: boolean): void {
+  writeFileSync(TEST_MODE_FILE, JSON.stringify({ enabled }, null, 2), "utf-8");
+}
+if (loadTestMode()) process.env.LLM_TEST_MODE = "1";
+
 function readBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolveP, reject) => {
     const chunks: Buffer[] = [];
@@ -518,6 +531,18 @@ const server = createServer(async (req, res) => {
     if (pathname === "/api/automation/run-now" && method === "POST") {
       const r = await runAutoScan();
       return sendJSON(res, 200, { ok: true, ...r });
+    }
+
+    // ── Test mode ──
+    if (pathname === "/api/test-mode" && method === "GET") {
+      return sendJSON(res, 200, { enabled: process.env.LLM_TEST_MODE === "1" });
+    }
+    if (pathname === "/api/test-mode" && method === "POST") {
+      const body = await readBody(req);
+      const { enabled } = JSON.parse(body.toString("utf-8"));
+      process.env.LLM_TEST_MODE = enabled ? "1" : "0";
+      saveTestMode(!!enabled);
+      return sendJSON(res, 200, { ok: true, enabled: !!enabled });
     }
 
     // ── Export ──

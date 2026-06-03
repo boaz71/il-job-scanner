@@ -42,10 +42,19 @@ function gatewayEligible(req: LLMRequest): boolean {
   return true;
 }
 
+// Test mode (LLM_TEST_MODE=1): force every call onto the local stack so a test
+// run costs nothing. Read at call time so it can be toggled at runtime without
+// a restart. When on, paid providers (anthropic/gemini) are never selected.
+function testModeOn(): boolean {
+  return process.env.LLM_TEST_MODE === "1";
+}
+
 // Direct-provider picker — never returns "gateway". Used both for the default
 // path (when LLM_PREFER_GATEWAY is unset) and as the fallback path when a
 // gateway call fails at runtime.
 function pickNonGatewayProvider(req: LLMRequest): Provider {
+  // In test mode the gateway-failure fallback must stay local too — never pay.
+  if (testModeOn()) return "ollama";
   if (req.forceProvider && req.forceProvider !== "gateway") return req.forceProvider;
   if (req.webSearch) return "anthropic";
   const cheap = (process.env.LLM_CHEAP_PROVIDER || "").toLowerCase() as Provider;
@@ -58,6 +67,12 @@ function pickNonGatewayProvider(req: LLMRequest): Provider {
 }
 
 function pickProvider(req: LLMRequest): Provider {
+  // Test mode wins over everything, including forceProvider and web search:
+  // gateway-eligible calls exercise the gateway path; the rest (system prompt /
+  // multi-turn) go straight to local Ollama, which handles them natively.
+  if (testModeOn()) {
+    return gatewayEligible(req) ? "gateway" : "ollama";
+  }
   if (req.forceProvider) return req.forceProvider;
   if (req.webSearch) return "anthropic";
   if (process.env.LLM_PREFER_GATEWAY === "1" && gatewayEligible(req)) {

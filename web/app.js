@@ -5,6 +5,7 @@ let ACTIVE_PROFILE = null;
 let SCANS = [];
 let TRACKED = [];
 let TRACKED_IDS = new Set();
+let TEST_MODE = false;
 
 // ═══════════════ Cost guard ═══════════════
 // Realistic cost estimates based on actual usage (web_search adds ~$0.10-0.20 per call)
@@ -24,6 +25,7 @@ const EXPENSIVE_OPS = {
 };
 
 function confirmCost(opType) {
+  if (TEST_MODE) return true; // nothing costs money in test mode
   const info = EXPENSIVE_OPS[opType];
   if (!info) return true;
   const webNote = info.web ? "\n⚠️ כולל חיפוש באינטרנט (יקר במיוחד)" : "";
@@ -3036,8 +3038,37 @@ document.getElementById("goal-save").addEventListener("click", async () => {
   } catch (e) { toast("❌ " + e.message, true); }
 });
 
+// ═══════════════ Test mode ═══════════════
+function applyTestMode(on) {
+  TEST_MODE = !!on;
+  document.body.classList.toggle("test-mode", TEST_MODE);
+  const cb = document.getElementById("test-mode-checkbox");
+  if (cb) cb.checked = TEST_MODE;
+}
+async function initTestMode() {
+  try {
+    const r = await api("/api/test-mode");
+    applyTestMode(r.enabled);
+  } catch { /* non-fatal */ }
+}
+document.getElementById("test-mode-checkbox").addEventListener("change", async (e) => {
+  const enabled = e.target.checked;
+  try {
+    await api("/api/test-mode", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    applyTestMode(enabled);
+    toast(enabled ? "🧪 מצב טסט פעיל — כל ה-AI מקומי, ללא עלות" : "☁️ מצב טסט כובה — ניתוב רגיל");
+  } catch (err) {
+    applyTestMode(!enabled); // revert toggle on failure
+    toast("❌ " + err.message, true);
+  }
+});
+
 // ═══════════════ Init ═══════════════
 (async () => {
+  await initTestMode();
   await loadProfiles();
   await loadJobs();
   loadProfilePage();
