@@ -3,7 +3,7 @@ loadEnv();
 
 import { createServer, IncomingMessage, ServerResponse } from "http";
 import { readFileSync, writeFileSync, existsSync } from "fs";
-import { resolve, dirname, extname } from "path";
+import { resolve, dirname, extname, sep } from "path";
 import { fileURLToPath } from "url";
 import type { Job } from "./types.js";
 import {
@@ -53,6 +53,20 @@ const MIME: Record<string, string> = {
 };
 
 const PORT = Number(process.env.PORT) || 5174;
+
+const WEB_DIR = resolve(ROOT, "web");
+
+// Browsers send Origin on cross-origin requests and on same-origin POSTs.
+// No Origin (curl, same-origin GET) is allowed; otherwise it must match Host.
+function isSameOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === req.headers.host;
+  } catch {
+    return false;
+  }
+}
 
 function readBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolveP, reject) => {
@@ -161,6 +175,10 @@ const server = createServer(async (req, res) => {
   const method = req.method || "GET";
 
   try {
+    // Block cross-site requests: a page on another origin could otherwise POST
+    // (e.g. text/plain bodies parse as JSON) and trigger scans, edits or deletes.
+    if (!isSameOrigin(req)) return sendJSON(res, 403, { error: "Cross-origin request blocked" });
+
     // ── Profiles ──
     if (pathname === "/api/profiles" && method === "GET") {
       const profiles = listProfiles().map((p) => ({
@@ -1191,6 +1209,12 @@ const server = createServer(async (req, res) => {
       path = existsSync(scored) ? scored : plain;
     } else {
       path = resolve(ROOT, "web" + pathname);
+      // Raw requests can contain "../" — never serve files outside web/.
+      if (!path.startsWith(WEB_DIR + sep)) {
+        res.writeHead(404);
+        res.end("Not found");
+        return;
+      }
     }
 
     if (!existsSync(path)) {

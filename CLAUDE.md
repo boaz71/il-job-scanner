@@ -50,6 +50,9 @@ npm run scan -- --keyword "backend"             # סנן לפי מילת מפת�
 npm run scan -- --location "tel aviv"           # סנן לפי מיקום
 npm run scan -- --add "boards.greenhouse.io/x"  # הוסף חברה
 npm run match                                   # חשב ציוני התאמה
+npm run web                                     # ממשק ווב (פורט 5174)
+npm test                                        # טסטים (node:test, ללא רשת)
+npx tsc --noEmit                                # בדיקת טיפוסים
 ```
 
 ## הוספת חברה

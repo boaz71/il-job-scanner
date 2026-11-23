@@ -5,7 +5,8 @@
   "scripts": {
     "scan": "tsx src/scanner.ts",
     "match": "tsx src/matcher.ts",
-    "web": "tsx src/server.ts"
+    "web": "tsx src/server.ts",
+    "test": "node --import tsx --test test/*.test.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

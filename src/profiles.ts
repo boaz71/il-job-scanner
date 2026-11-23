@@ -196,7 +196,13 @@ export function listProfiles(): StoredProfile[] {
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
+// Profile ids come from slug() — reject anything that could escape PROFILES_DIR.
+function isSafeId(id: unknown): id is string {
+  return typeof id === "string" && /^[\w\u0590-\u05ff-]+$/.test(id);
+}
+
 export function getProfile(id: string): StoredProfile | null {
+  if (!isSafeId(id)) return null;
   ensureDir();
   const path = resolve(PROFILES_DIR, `${id}.json`);
   if (!existsSync(path)) return null;
@@ -210,6 +216,7 @@ export function saveStoredProfile(p: StoredProfile): void {
 }
 
 export function deleteProfile(id: string): boolean {
+  if (!isSafeId(id)) return false;
   ensureDir();
   const path = resolve(PROFILES_DIR, `${id}.json`);
   if (!existsSync(path)) return false;

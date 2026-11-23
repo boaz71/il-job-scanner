@@ -99,10 +99,10 @@ export async function runAutoScan(): Promise<{ total: number; new_count: number;
   let alerted = 0;
   let newCount = 0;
 
+  // runScan() already flagged is_new (and updated seen-ids) — marking again here
+  // would see every id as already seen, so no job would ever count as new.
   if (active) {
-    const flagged = markNewJobs(result.jobs);
-    const scored = matchJobs(flagged, active.profile, active.profile.min_match_score || 0)
-      .map((j, i) => ({ ...j, is_new: (flagged[result.jobs.findIndex((x) => x.id === j.id)] as any)?.is_new || false }));
+    const scored = matchJobs(result.jobs, active.profile, active.profile.min_match_score || 0);
     writeFileSync(resolve(ROOT, "data/scored-jobs.json"), JSON.stringify(scored, null, 2));
 
     newCount = scored.filter((j: any) => j.is_new).length;
@@ -120,7 +120,7 @@ export async function runAutoScan(): Promise<{ total: number; new_count: number;
       }
     }
   } else {
-    markNewJobs(result.jobs);
+    newCount = result.jobs.filter((j) => j.is_new).length;
   }
 
   // Update last run

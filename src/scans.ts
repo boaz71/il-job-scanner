@@ -51,7 +51,13 @@ export function listScans(): { id: string; scanned_at: string; total_jobs: numbe
     .sort((a, b) => b.scanned_at.localeCompare(a.scanned_at));
 }
 
+// Scan ids are generated timestamps — reject anything that could escape SCANS_DIR.
+function isSafeId(id: unknown): id is string {
+  return typeof id === "string" && /^[\w-]+$/.test(id);
+}
+
 export function getScan(id: string): ScanRecord | null {
+  if (!isSafeId(id)) return null;
   ensureDir();
   const path = resolve(SCANS_DIR, `${id}.json`);
   if (!existsSync(path)) return null;
@@ -59,6 +65,7 @@ export function getScan(id: string): ScanRecord | null {
 }
 
 export function deleteScan(id: string): boolean {
+  if (!isSafeId(id)) return false;
   ensureDir();
   const path = resolve(SCANS_DIR, `${id}.json`);
   if (!existsSync(path)) return false;
