@@ -43,6 +43,7 @@ import { getSummary as getCostSummary } from "./costs.js";
 import { getCacheStats, clearCache } from "./cache.js";
 import { loadStatuses, effectiveStatus, verifyJobs } from "./verify.js";
 import { resolveJob } from "./jobLookup.js";
+import { buildPipeline, pipelineForPrompt } from "./pipeline.js";
 import {
   getApplication, listApplications, saveDocument, approveApplication, markOpened, markSubmitted, FlowError,
 } from "./applications.js";
@@ -93,6 +94,17 @@ function loadCurrentJobs(): Job[] {
   const path = existsSync(scored) ? scored : plain;
   if (!existsSync(path)) return [];
   return JSON.parse(readFileSync(path, "utf-8"));
+}
+
+// Tracked jobs with their flow stage, verification and next step (see pipeline.ts).
+function loadPipeline() {
+  const stored = loadStatuses();
+  const current = new Map(loadCurrentJobs().map((j) => [j.id, j]));
+  const apps = new Map(listApplications().map((a) => [a.job_id, a]));
+  return buildPipeline(listTracked(), apps, (t) => {
+    const cur = current.get(t.id);
+    return effectiveStatus(cur ?? t.job, stored[t.id], !!cur).status;
+  });
 }
 
 // Which profile + base CV generated documents belong to (see applications.ts).
@@ -612,6 +624,10 @@ const server = createServer(async (req, res) => {
       const counts = { open: 0, closed: 0, unknown: 0 };
       for (const v of Object.values(r)) counts[v.status]++;
       return sendJSON(res, 200, { ok: true, statuses: r, counts });
+    }
+
+    if (pathname === "/api/pipeline" && method === "GET") {
+      return sendJSON(res, 200, { items: loadPipeline() });
     }
 
     if (pathname === "/api/tracker" && method === "GET") {
@@ -1256,6 +1272,7 @@ const server = createServer(async (req, res) => {
         cvText: active ? getPrimaryCVText(active) : null,
         trackedSummary,
         recentActivity,
+        pipeline: pipelineForPrompt(loadPipeline()),
         conversationHistory: state.conversations.slice(-12).map(m => ({ role: m.role, content: m.content })),
       };
 

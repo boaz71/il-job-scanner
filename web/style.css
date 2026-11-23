@@ -2502,3 +2502,11 @@ a:hover { text-decoration: underline; }
   .flow-checks li { flex-direction: column; gap: 0; }
   .flow-editor { min-height: 220px; }
 }
+
+/* ─── Pipeline: next step on tracker cards and in the mentor ─── */
+.tc-stage { font-size: 10px; color: var(--fg-soft); margin-right: 6px; }
+.tc-next { font-size: 11px; color: var(--accent); margin: 2px 0 4px; line-height: 1.4; }
+.mentor-next { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.mentor-next-item { display: flex; flex-direction: column; padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer; transition: var(--transition); }
+.mentor-next-item:hover { background: var(--panel-2); }
+.mentor-next-item .muted { font-size: 12px; }

@@ -6,6 +6,13 @@ let SCANS = [];
 let TRACKED = [];
 let TRACKED_IDS = new Set();
 let VERIFY = {};   // jobId → verification (see src/verify.ts)
+let PIPELINE = {}; // jobId → { stage, next_step, ... } for tracked jobs (see src/pipeline.ts)
+
+async function loadPipeline() {
+  try { PIPELINE = Object.fromEntries((await api("/api/pipeline")).items.map(i => [i.id, i])); }
+  catch { PIPELINE = {}; }
+}
+const STAGE_LABEL = { cv: "📝 קו״ח מוכנים", approved: "✅ מאושר להגשה", submitted: "📤 הוגש דרך המסלול" };
 
 // ═══════════════ Cost guard ═══════════════
 // Realistic cost estimates based on actual usage (web_search adds ~$0.10-0.20 per call)
@@ -645,7 +652,7 @@ window.toggleTrack = async (jobId) => {
 
 async function loadTrackerPage() {
   await loadTrackedIds();
-  await loadVerifyStatus();
+  await Promise.all([loadVerifyStatus(), loadPipeline()]);
   document.getElementById("tracker-stats").textContent = `${TRACKED.length} משרות במעקב`;
   const cols = ["interested", "applied", "interview", "offer", "rejected"];
   for (const status of cols) {
@@ -671,7 +678,8 @@ function renderTrackedCard(t) {
       <span class="tc-grade ${grade}">${grade}</span>
       <a href="${escapeAttr(t.job.url)}" target="_blank" class="tc-title">${escapeHtml(t.job.title)}</a>
       <div class="tc-meta">🏢 ${escapeHtml(t.job.company)} · 📍 ${escapeHtml(t.job.location)}${daysLabel}</div>
-      <div class="tc-verify">${verifyBadge(t.id)}</div>
+      <div class="tc-verify">${verifyBadge(t.id)}${STAGE_LABEL[PIPELINE[t.id]?.stage] ? `<span class="tc-stage">${STAGE_LABEL[PIPELINE[t.id].stage]}</span>` : ""}</div>
+      ${PIPELINE[t.id]?.next_step ? `<div class="tc-next">➡️ ${escapeHtml(PIPELINE[t.id].next_step)}</div>` : ""}
       ${t.notes ? `<div class="tc-note">📝 ${escapeHtml(t.notes)}</div>` : ""}
       ${followupAlert}
       <div class="tc-actions">
@@ -1375,7 +1383,7 @@ document.getElementById("auto-run-now").addEventListener("click", async () => {
   btn.disabled = true; btn.innerHTML = "סורק... <span class='spinner'></span>";
   try {
     const r = await api("/api/automation/run-now", { method: "POST" });
-    toast(`✅ ${r.total} משרות · ${r.new_count} חדשות · ${r.alerted} התראות`);
+    toast(`✅ ${r.total} משרות · ${r.new_count} חדשות · ${r.alerted} התראות${r.closed_tracked ? ` · ⛔ ${r.closed_tracked} משרות במעקב נסגרו` : ""}`);
     loadAutomationPage();
   } catch (e) { toast("❌ " + e.message, true); }
   finally { btn.disabled = false; btn.textContent = orig; }
@@ -2979,7 +2987,7 @@ let MENTOR_STATE = null;
 
 async function loadMentorPage() {
   try {
-    MENTOR_STATE = await api("/api/mentor");
+    [MENTOR_STATE] = await Promise.all([api("/api/mentor"), loadTrackedIds(), loadPipeline()]);
     renderMentorGoal();
     renderMentorChat();
     renderMentorStatus();
@@ -3013,6 +3021,14 @@ function renderMentorStatus() {
   wrap.innerHTML = Object.keys(labels).map(k =>
     `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px"><span>${labels[k]} ${k}</span><b>${byStatus[k] || 0}</b></div>`
   ).join("");
+  // Same next steps the mentor sees (top 5, most advanced first)
+  const steps = Object.values(PIPELINE).filter(i => i.next_step).slice(0, 5);
+  if (steps.length) {
+    wrap.innerHTML += `<div class="mentor-next"><b>➡️ הצעדים הבאים</b>${steps.map(i => `
+      <div class="mentor-next-item" onclick="openFlow('${escapeAttr(i.id)}')" title="פתח מסלול הגשה">
+        <span>${escapeHtml(i.title)} · ${escapeHtml(i.company)}</span><span class="muted">${escapeHtml(i.next_step)}</span>
+      </div>`).join("")}</div>`;
+  }
 }
 
 function renderMentorChat() {
