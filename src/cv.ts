@@ -614,7 +614,7 @@ ${jobsContext.slice(0, 2000)}
 export async function generateLinkedInOutreach(cvText: string, job: Job): Promise<string> {
   return cachedGenerate({
     type: "linkedin",
-    cacheKey: [job.id],
+    cacheKey: [job.id, cvText],  // cvText: a different profile/CV must not reuse the text
     model: cheapModel(),
     maxTokens: 1000,
     messages: [{
@@ -661,7 +661,7 @@ ${cvText.slice(0, 2000)}
 export async function generateFollowUp(cvText: string, job: Job, daysSinceApplied: number): Promise<string> {
   return cachedGenerate({
     type: "followup",
-    cacheKey: [job.id, String(daysSinceApplied)],
+    cacheKey: [job.id, String(daysSinceApplied), cvText],
     model: cheapModel(),
     maxTokens: 800,
     viaLlmRouter: true,
@@ -1417,7 +1417,7 @@ ${reposSummary}
 export async function generateCoverLetter(cvText: string, job: Job, lang: Lang = "auto"): Promise<string> {
   return cachedGenerate({
     type: "cover-letter",
-    cacheKey: [job.id, lang],
+    cacheKey: [job.id, lang, cvText],  // cvText: a different profile/CV must not reuse the letter
     model: cheapModel(),
     maxTokens: 1500,
     messages: [

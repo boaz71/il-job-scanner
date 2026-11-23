@@ -42,6 +42,8 @@ import {
 import { getSummary as getCostSummary } from "./costs.js";
 import { getCacheStats, clearCache } from "./cache.js";
 import { loadStatuses, effectiveStatus, verifyJobs } from "./verify.js";
+import { resolveJob } from "./jobLookup.js";
+import { getApplication, listApplications, saveDocument } from "./applications.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -89,6 +91,12 @@ function loadCurrentJobs(): Job[] {
   const path = existsSync(scored) ? scored : plain;
   if (!existsSync(path)) return [];
   return JSON.parse(readFileSync(path, "utf-8"));
+}
+
+// Which profile + base CV generated documents belong to (see applications.ts).
+function docContext(p: StoredProfile): { profileId: string; cvId: string | null } {
+  const idx = Math.min(p.primary_cv_index || 0, Math.max(0, p.cvs.length - 1));
+  return { profileId: p.id, cvId: p.cvs[idx]?.id ?? null };
 }
 
 // Re-score current raw jobs against a profile and write scored-jobs.json
@@ -408,27 +416,59 @@ const server = createServer(async (req, res) => {
       return sendJSON(res, ok ? 200 : 404, { ok });
     }
 
+    // ── Application records ──
+    if (pathname === "/api/applications" && method === "GET") {
+      const applications = listApplications().map((a) => ({
+        job_id: a.job_id, title: a.job.title, company: a.job.company, profile_id: a.profile_id,
+        has_cv: !!a.cv, has_letter: !!a.letter, updated_at: a.updated_at,
+      }));
+      return sendJSON(res, 200, { applications });
+    }
+    if (pathname === "/api/applications/get" && method === "GET") {
+      const found = resolveJob(query.get("jobId"));
+      return sendJSON(res, 200, {
+        application: getApplication(query.get("jobId") || ""),
+        job: found?.job ?? null,
+        job_source: found?.source ?? null,
+      });
+    }
+    if (pathname === "/api/applications/save" && method === "POST") {
+      const body = await readBody(req);
+      const { jobId, kind, markdown, lang } = JSON.parse(body.toString("utf-8"));
+      if (kind !== "cv" && kind !== "letter") return sendJSON(res, 400, { error: "kind חייב להיות cv או letter" });
+      if (typeof markdown !== "string" || !markdown.trim()) return sendJSON(res, 400, { error: "המסמך ריק" });
+      const active = getActiveProfile();
+      if (!active) return sendJSON(res, 400, { error: "אין פרופיל פעיל" });
+      const job = resolveJob(jobId)?.job;
+      if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
+      const application = saveDocument(job, kind, { markdown, lang, generated: false }, docContext(active));
+      return sendJSON(res, 200, { ok: true, application });
+    }
+
     // ── Generation ──
     if (pathname === "/api/generate/cv" && method === "POST") {
       const body = await readBody(req);
-      const { jobId, lang } = JSON.parse(body.toString("utf-8"));
+      const { jobId, lang, save } = JSON.parse(body.toString("utf-8"));
       const active = getActiveProfile();
       if (!active) return sendJSON(res, 400, { error: "אין פרופיל פעיל" });
-      const job = loadCurrentJobs().find((j) => j.id === jobId);
+      const job = resolveJob(jobId)?.job;
       if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
       const text = await generateTailoredCV(getPrimaryCVText(active), job, (lang as Lang) || "auto");
-      return sendJSON(res, 200, { ok: true, text, job: { title: job.title, company: job.company } });
+      // save: keep it in the job's application record (submission flow)
+      const application = save ? saveDocument(job, "cv", { markdown: text, lang, generated: true }, docContext(active)) : undefined;
+      return sendJSON(res, 200, { ok: true, text, job: { title: job.title, company: job.company }, application });
     }
 
     if (pathname === "/api/generate/letter" && method === "POST") {
       const body = await readBody(req);
-      const { jobId, lang } = JSON.parse(body.toString("utf-8"));
+      const { jobId, lang, save } = JSON.parse(body.toString("utf-8"));
       const active = getActiveProfile();
       if (!active) return sendJSON(res, 400, { error: "אין פרופיל פעיל" });
-      const job = loadCurrentJobs().find((j) => j.id === jobId);
+      const job = resolveJob(jobId)?.job;
       if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
       const text = await generateCoverLetter(getPrimaryCVText(active), job, (lang as Lang) || "auto");
-      return sendJSON(res, 200, { ok: true, text, job: { title: job.title, company: job.company } });
+      const application = save ? saveDocument(job, "letter", { markdown: text, lang, generated: true }, docContext(active)) : undefined;
+      return sendJSON(res, 200, { ok: true, text, job: { title: job.title, company: job.company }, application });
     }
 
     if (pathname === "/api/generate/interview" && method === "POST") {
@@ -436,7 +476,7 @@ const server = createServer(async (req, res) => {
       const { jobId } = JSON.parse(body.toString("utf-8"));
       const active = getActiveProfile();
       if (!active) return sendJSON(res, 400, { error: "אין פרופיל פעיל" });
-      const job = loadCurrentJobs().find((j) => j.id === jobId);
+      const job = resolveJob(jobId)?.job;
       if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
       const text = await generateInterviewPrep(getPrimaryCVText(active), job);
       return sendJSON(res, 200, { ok: true, text, job: { title: job.title, company: job.company } });
@@ -447,7 +487,7 @@ const server = createServer(async (req, res) => {
       const { jobId } = JSON.parse(body.toString("utf-8"));
       const active = getActiveProfile();
       if (!active) return sendJSON(res, 400, { error: "אין פרופיל פעיל" });
-      const job = loadCurrentJobs().find((j) => j.id === jobId);
+      const job = resolveJob(jobId)?.job;
       if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
       const text = await analyzeSkillGap(getPrimaryCVText(active), job);
       return sendJSON(res, 200, { ok: true, text, job: { title: job.title, company: job.company } });
@@ -458,7 +498,7 @@ const server = createServer(async (req, res) => {
       const { jobId } = JSON.parse(body.toString("utf-8"));
       const active = getActiveProfile();
       if (!active) return sendJSON(res, 400, { error: "אין פרופיל פעיל" });
-      const job = loadCurrentJobs().find((j) => j.id === jobId);
+      const job = resolveJob(jobId)?.job;
       if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
       const text = await generateSalaryPrep(getPrimaryCVText(active), job);
       return sendJSON(res, 200, { ok: true, text, job: { title: job.title, company: job.company } });
@@ -470,7 +510,7 @@ const server = createServer(async (req, res) => {
       const { jobId, history } = JSON.parse(body.toString("utf-8"));
       const active = getActiveProfile();
       if (!active) return sendJSON(res, 400, { error: "אין פרופיל פעיל" });
-      const job = loadCurrentJobs().find((j) => j.id === jobId);
+      const job = resolveJob(jobId)?.job;
       if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
       const text = await mockInterviewReply(getPrimaryCVText(active), job, (history || []) as MockMessage[]);
       return sendJSON(res, 200, { ok: true, text });
@@ -491,7 +531,7 @@ const server = createServer(async (req, res) => {
       const body = await readBody(req);
       const { jobId, force } = JSON.parse(body.toString("utf-8"));
       const tracked = listTracked();
-      const job = loadCurrentJobs().find((j) => j.id === jobId) || tracked.find((t) => t.id === jobId)?.job;
+      const job = resolveJob(jobId)?.job;
       if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
       const r = await verifyJobs([job], { force: !!force, checkApplyLink: true, keepIds: new Set(tracked.map((t) => t.id)) });
       return sendJSON(res, 200, { ok: true, verification: r[job.id] });
@@ -505,10 +545,7 @@ const server = createServer(async (req, res) => {
         jobs = tracked.map((t) => t.job);
       } else {
         if (!Array.isArray(jobIds)) return sendJSON(res, 400, { error: "חסר jobIds או scope" });
-        const current = loadCurrentJobs();
-        jobs = jobIds
-          .map((id: string) => current.find((j) => j.id === id) || tracked.find((t) => t.id === id)?.job)
-          .filter(Boolean) as Job[];
+        jobs = jobIds.map((id: string) => resolveJob(id)?.job).filter(Boolean) as Job[];
       }
       if (jobs.length > 100) return sendJSON(res, 400, { error: "עד 100 משרות בבדיקה אחת" });
       const r = await verifyJobs(jobs, { force: !!force, keepIds: new Set(tracked.map((t) => t.id)) });
@@ -523,7 +560,7 @@ const server = createServer(async (req, res) => {
     if (pathname === "/api/tracker/add" && method === "POST") {
       const body = await readBody(req);
       const { jobId } = JSON.parse(body.toString("utf-8"));
-      const job = loadCurrentJobs().find((j) => j.id === jobId);
+      const job = resolveJob(jobId)?.job;
       if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
       const t = addTracked(job);
       return sendJSON(res, 200, { ok: true, tracked: t });
@@ -618,7 +655,7 @@ const server = createServer(async (req, res) => {
       const { jobId } = JSON.parse(body.toString("utf-8"));
       const active = getActiveProfile();
       if (!active) return sendJSON(res, 400, { error: "אין פרופיל פעיל" });
-      const job = loadCurrentJobs().find((j) => j.id === jobId);
+      const job = resolveJob(jobId)?.job;
       if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
       const text = await generateLinkedInOutreach(getPrimaryCVText(active), job);
       return sendJSON(res, 200, { ok: true, text, job: { title: job.title, company: job.company } });
@@ -648,8 +685,7 @@ const server = createServer(async (req, res) => {
       if (!Array.isArray(jobIds) || jobIds.length < 2) {
         return sendJSON(res, 400, { error: "בחר לפחות 2 משרות להשוואה" });
       }
-      const allJobs = loadCurrentJobs();
-      const selected = jobIds.map(id => allJobs.find(j => j.id === id)).filter(Boolean);
+      const selected = jobIds.map((id: string) => resolveJob(id)?.job).filter(Boolean);
       if (selected.length < 2) return sendJSON(res, 400, { error: "חלק מהמשרות לא נמצאו" });
       const text = compareJobs(selected as any);
       return sendJSON(res, 200, { ok: true, text });
