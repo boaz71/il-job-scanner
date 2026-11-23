@@ -1,0 +1,16 @@
+{
+  "name": "Your Name",
+  "title": "Your Title",
+  "skills": [
+    "skill1",
+    "skill2"
+  ],
+  "experience_years": 0,
+  "location": "City",
+  "job_types": [
+    "Full-time"
+  ],
+  "keywords_boost": [],
+  "keywords_exclude": [],
+  "min_match_score": 30
+}
