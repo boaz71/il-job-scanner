@@ -61,3 +61,38 @@ test("listApplications newest first; missing / bad ids return null", async () =>
   assert.equal(a.getApplication(undefined as any), null);
   assert.ok(readdirSync(dir).every((f) => !f.endsWith(".tmp")));
 });
+
+// ── Submission flow ──
+const open = { status: "open", checked_at: "2026-01-01T00:00:00.000Z", method: "ats-api", trust: "ats", source_ok: true, reason: "" } as any;
+
+test("approve requires a saved CV and a job that isn't closed", () => {
+  assert.throws(() => a.approveApplication("gh-acme-1", open, []), a.FlowError);
+  a.saveDocument(job(), "cv", { markdown: "cv", generated: true }, ctxA);
+  assert.throws(() => a.approveApplication("gh-acme-1", { ...open, status: "closed" }, []), /סגורה/);
+  const rec = a.approveApplication("gh-acme-1", open, ["fit", "cv-reviewed"]);
+  assert.deepEqual(rec.approval!.checklist, ["fit", "cv-reviewed"]);
+  assert.equal(rec.verification!.status, "open");
+});
+
+test("editing a document after approval cancels the approval", () => {
+  a.saveDocument(job(), "cv", { markdown: "cv", generated: true }, ctxA);
+  a.approveApplication("gh-acme-1", open, []);
+  const rec = a.saveDocument(job(), "letter", { markdown: "late letter", generated: false }, ctxA);
+  assert.equal(rec.approval, undefined);
+  assert.ok(rec.events.some((e) => e.type === "approval-reset"));
+  assert.throws(() => a.markOpened("gh-acme-1"), a.FlowError);
+});
+
+test("open + submit only after approval; submitted documents are locked", () => {
+  a.saveDocument(job(), "cv", { markdown: "cv", generated: true }, ctxA);
+  assert.throws(() => a.markSubmitted("gh-acme-1", ""), a.FlowError);
+  a.approveApplication("gh-acme-1", open, []);
+  const opened = a.markOpened("gh-acme-1");
+  assert.equal(opened.submission!.apply_url, "https://boards.greenhouse.io/acme/jobs/1");
+  const sub = a.markSubmitted("gh-acme-1", "  Ref #123  ");
+  assert.ok(sub.submission!.submitted_at && sub.submission!.opened_at);
+  assert.equal(sub.confirmation!.evidence, "Ref #123");
+  assert.equal(a.markSubmitted("gh-acme-1", "again").confirmation!.evidence, "Ref #123");  // idempotent
+  assert.throws(() => a.saveDocument(job(), "cv", { markdown: "new", generated: false }, ctxA), /נעולים/);
+  assert.throws(() => a.approveApplication("gh-acme-1", open, []), a.FlowError);
+});

@@ -40,6 +40,9 @@ export interface ApplicationRecord {
   events: { at: string; type: string; note?: string }[];
 }
 
+// A step of the submission flow was attempted out of order (→ HTTP 409).
+export class FlowError extends Error {}
+
 // Job ids contain arbitrary source text — never use them as a path directly.
 // Readable prefix + hash keeps names unique even when sanitizing collapses characters.
 export function fileNameFor(jobId: string): string {
@@ -97,6 +100,8 @@ export function saveDocument(
   ctx: { profileId: string | null; cvId: string | null },
 ): ApplicationRecord {
   let rec = getApplication(job.id) ?? blank(job, ctx.profileId, ctx.cvId);
+  // What was submitted is the record of what was sent — it must not change afterwards.
+  if (rec.submission?.submitted_at) throw new FlowError("המועמדות כבר הוגשה — המסמכים נעולים");
   if (rec.profile_id !== ctx.profileId || rec.cv_id !== ctx.cvId) {
     rec.events.push({ at: new Date().toISOString(), type: "profile-changed", note: `${rec.profile_id ?? "—"} → ${ctx.profileId ?? "—"}` });
     rec = { ...rec, profile_id: ctx.profileId, cv_id: ctx.cvId, cv: undefined, letter: undefined };
@@ -112,5 +117,45 @@ export function saveDocument(
   };
   rec.job = job;
   rec.events.push({ at: now, type: doc.generated ? `${kind}-generated` : `${kind}-edited` });
+  // Approval covers specific documents — changing one requires approving again.
+  if (rec.approval) {
+    rec.approval = undefined;
+    rec.events.push({ at: now, type: "approval-reset", note: `${kind} changed after approval` });
+  }
+  return saveApplication(rec);
+}
+
+// ── Submission flow (nothing here sends anything — the user applies on the employer's page) ──
+
+export function approveApplication(jobId: string, verification: JobVerification, checklist: string[]): ApplicationRecord {
+  const rec = getApplication(jobId);
+  if (!rec?.cv) throw new FlowError("צריך לשמור קורות חיים מותאמים לפני אישור");
+  if (rec.submission?.submitted_at) throw new FlowError("המועמדות כבר הוגשה");
+  if (verification.status === "closed") throw new FlowError("המשרה סגורה — אי אפשר לאשר הגשה");
+  const now = new Date().toISOString();
+  rec.verification = verification;
+  rec.approval = { at: now, checklist };
+  rec.events.push({ at: now, type: "approved", note: `verification: ${verification.status}` });
+  return saveApplication(rec);
+}
+
+export function markOpened(jobId: string): ApplicationRecord {
+  const rec = getApplication(jobId);
+  if (!rec?.approval) throw new FlowError("צריך לאשר לפני פתיחת דף ההגשה");
+  const now = new Date().toISOString();
+  rec.submission = { ...rec.submission, method: "manual", opened_at: now, apply_url: rec.job.apply_url || rec.job.url };
+  rec.events.push({ at: now, type: "apply-page-opened" });
+  return saveApplication(rec);
+}
+
+export function markSubmitted(jobId: string, evidence: string): ApplicationRecord {
+  const rec = getApplication(jobId);
+  if (!rec?.approval) throw new FlowError("צריך לאשר לפני סימון כהוגש");
+  if (rec.submission?.submitted_at) return rec;
+  const now = new Date().toISOString();
+  rec.submission = { ...rec.submission, method: "manual", submitted_at: now, apply_url: rec.submission?.apply_url || rec.job.apply_url || rec.job.url };
+  const ev = evidence.trim().slice(0, 4000);
+  if (ev) rec.confirmation = { at: now, evidence: ev };
+  rec.events.push({ at: now, type: "submitted", note: ev ? "with evidence" : "no evidence" });
   return saveApplication(rec);
 }

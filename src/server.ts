@@ -43,7 +43,9 @@ import { getSummary as getCostSummary } from "./costs.js";
 import { getCacheStats, clearCache } from "./cache.js";
 import { loadStatuses, effectiveStatus, verifyJobs } from "./verify.js";
 import { resolveJob } from "./jobLookup.js";
-import { getApplication, listApplications, saveDocument } from "./applications.js";
+import {
+  getApplication, listApplications, saveDocument, approveApplication, markOpened, markSubmitted, FlowError,
+} from "./applications.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -441,8 +443,60 @@ const server = createServer(async (req, res) => {
       if (!active) return sendJSON(res, 400, { error: "אין פרופיל פעיל" });
       const job = resolveJob(jobId)?.job;
       if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
-      const application = saveDocument(job, kind, { markdown, lang, generated: false }, docContext(active));
-      return sendJSON(res, 200, { ok: true, application });
+      try {
+        const application = saveDocument(job, kind, { markdown, lang, generated: false }, docContext(active));
+        return sendJSON(res, 200, { ok: true, application });
+      } catch (e) {
+        if (e instanceof FlowError) return sendJSON(res, 409, { error: e.message });
+        throw e;
+      }
+    }
+
+    // ── Submission flow ── (approval → open employer page → user confirms; nothing is sent for the user)
+    if (pathname === "/api/applications/approve" && method === "POST") {
+      const body = await readBody(req);
+      const { jobId, checklist, acceptUnknown } = JSON.parse(body.toString("utf-8"));
+      const job = resolveJob(jobId)?.job;
+      if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
+      const tracked = listTracked();
+      const verification = (await verifyJobs([job], { checkApplyLink: true, keepIds: new Set(tracked.map((t) => t.id)) }))[job.id];
+      if (verification.status === "unknown" && !acceptUnknown) {
+        return sendJSON(res, 409, { error: "לא ניתן לאמת שהמשרה פתוחה — אשר שאתה מבין זאת", verification });
+      }
+      try {
+        const application = approveApplication(jobId, verification, Array.isArray(checklist) ? checklist.map(String) : []);
+        return sendJSON(res, 200, { ok: true, application });
+      } catch (e) {
+        if (e instanceof FlowError) return sendJSON(res, 409, { error: e.message, verification });
+        throw e;
+      }
+    }
+    if (pathname === "/api/applications/opened" && method === "POST") {
+      const body = await readBody(req);
+      const { jobId } = JSON.parse(body.toString("utf-8"));
+      try {
+        return sendJSON(res, 200, { ok: true, application: markOpened(jobId) });
+      } catch (e) {
+        if (e instanceof FlowError) return sendJSON(res, 409, { error: e.message });
+        throw e;
+      }
+    }
+    if (pathname === "/api/applications/submitted" && method === "POST") {
+      const body = await readBody(req);
+      const { jobId, evidence } = JSON.parse(body.toString("utf-8"));
+      let application;
+      try {
+        application = markSubmitted(jobId, typeof evidence === "string" ? evidence : "");
+      } catch (e) {
+        if (e instanceof FlowError) return sendJSON(res, 409, { error: e.message });
+        throw e;
+      }
+      // Move to "applied" in the tracker — never backwards from interview/offer/rejected.
+      const t = addTracked(application.job);
+      const tracked = t.status === "interested"
+        ? updateTracked(t.id, { status: "applied", applied_at: application.submission!.submitted_at })
+        : t;
+      return sendJSON(res, 200, { ok: true, application, tracked });
     }
 
     // ── Generation ──
@@ -453,6 +507,9 @@ const server = createServer(async (req, res) => {
       if (!active) return sendJSON(res, 400, { error: "אין פרופיל פעיל" });
       const job = resolveJob(jobId)?.job;
       if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
+      if (save && getApplication(job.id)?.submission?.submitted_at) {
+        return sendJSON(res, 409, { error: "המועמדות כבר הוגשה — המסמכים נעולים" });
+      }
       const text = await generateTailoredCV(getPrimaryCVText(active), job, (lang as Lang) || "auto");
       // save: keep it in the job's application record (submission flow)
       const application = save ? saveDocument(job, "cv", { markdown: text, lang, generated: true }, docContext(active)) : undefined;
@@ -466,6 +523,9 @@ const server = createServer(async (req, res) => {
       if (!active) return sendJSON(res, 400, { error: "אין פרופיל פעיל" });
       const job = resolveJob(jobId)?.job;
       if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
+      if (save && getApplication(job.id)?.submission?.submitted_at) {
+        return sendJSON(res, 409, { error: "המועמדות כבר הוגשה — המסמכים נעולים" });
+      }
       const text = await generateCoverLetter(getPrimaryCVText(active), job, (lang as Lang) || "auto");
       const application = save ? saveDocument(job, "letter", { markdown: text, lang, generated: true }, docContext(active)) : undefined;
       return sendJSON(res, 200, { ok: true, text, job: { title: job.title, company: job.company }, application });

@@ -650,6 +650,26 @@
 
 <!-- ═══════════════ MODALS ═══════════════ -->
 
+<!-- Submission flow modal (before the generation modal so tools opened from it stack on top) -->
+<div class="modal-backdrop" id="flow-modal-backdrop">
+  <div class="modal flow-modal">
+    <div class="modal-head">
+      <div class="flow-head-title">
+        <h3 id="flow-title">🚀 מסלול הגשה</h3>
+        <span class="muted" id="flow-subtitle"></span>
+      </div>
+      <button class="icon-btn" id="flow-close">✕</button>
+    </div>
+    <ol class="flow-steps" id="flow-steps"></ol>
+    <div class="modal-body" id="flow-body"></div>
+    <div class="modal-foot flow-foot">
+      <button class="btn" id="flow-prev">→ הקודם</button>
+      <span class="flow-foot-note muted" id="flow-foot-note"></span>
+      <button class="btn primary" id="flow-next">הבא ←</button>
+    </div>
+  </div>
+</div>
+
 <!-- Generation modal -->
 <div class="modal-backdrop" id="modal-backdrop">
   <div class="modal">

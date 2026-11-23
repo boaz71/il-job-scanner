@@ -274,6 +274,7 @@ async function loadVerifyStatus() {
 function fmtAgo(iso) {
   if (!iso) return "";
   const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 1) return "עכשיו";
   if (mins < 60) return `לפני ${mins} דק'`;
   const hours = Math.round(mins / 60);
   if (hours < 48) return `לפני ${hours} שע'`;
@@ -408,6 +409,7 @@ function renderJobs() {
     const restoredBadge = j.is_restored ? `<span class="restored-badge">♻️ משוחזר</span>` : "";
     const actions = hasProfile ? `
       <div class="job-actions">
+        <button class="btn small primary" onclick="openFlow('${escapeAttr(j.id)}')" title="אימות, קו״ח, מכתב, אישור והגשה — שלב אחר שלב">🚀 הגשה</button>
         <button class="btn small ${tracked ? 'track-btn tracked' : 'track-btn'}" onclick="toggleTrack('${escapeAttr(j.id)}')">${tracked ? '⭐ במעקב' : '☆ עקוב'}</button>
         <label class="compare-check" title="בחר להשוואה"><input type="checkbox" class="compare-cb" data-id="${escapeAttr(j.id)}" onchange="updateCompareBar()" /> ⚖️</label>
         <button class="btn small" onclick="generate('cv','${escapeAttr(j.id)}','${escapeAttr(j.title)}','${escapeAttr(j.company)}')">📝 קו"ח</button>
@@ -673,6 +675,7 @@ function renderTrackedCard(t) {
       ${t.notes ? `<div class="tc-note">📝 ${escapeHtml(t.notes)}</div>` : ""}
       ${followupAlert}
       <div class="tc-actions">
+        <button onclick="openFlow('${escapeAttr(t.id)}')" title="מסלול הגשה">🚀 הגשה</button>
         <button onclick="editNote('${escapeAttr(t.id)}')">📝</button>
         <button onclick="generate('cv','${escapeAttr(t.id)}','${escapeAttr(t.job.title)}','${escapeAttr(t.job.company)}')">📝 קו"ח</button>
         <button onclick="generate('interview','${escapeAttr(t.id)}','${escapeAttr(t.job.title)}','${escapeAttr(t.job.company)}')">🎤 הכנה</button>
@@ -3101,6 +3104,469 @@ document.getElementById("goal-save").addEventListener("click", async () => {
     loadMentorPage();
   } catch (e) { toast("❌ " + e.message, true); }
 });
+
+// ═══════════════ Submission flow ═══════════════
+// One window that walks a job from verification to a submitted, tracked application.
+// The app never applies on the user's behalf: it prepares documents, records the
+// user's explicit approval, opens the employer's page and records what they report.
+const FLOW_STEPS = [
+  { key: "verify", label: "אימות" },
+  { key: "match", label: "התאמה" },
+  { key: "cv", label: "קו\"ח" },
+  { key: "letter", label: "מכתב" },
+  { key: "approve", label: "אישור" },
+  { key: "apply", label: "הגשה" },
+  { key: "confirm", label: "אישור הגשה" },
+  { key: "follow", label: "מעקב" },
+];
+const FLOW_CHECKLIST = [
+  { key: "fit", text: "המשרה מתאימה לי ואני רוצה להגיש אליה" },
+  { key: "cv-reviewed", text: "קראתי את קורות החיים המותאמים — אין בהם מידע שגוי או מומצא" },
+  { key: "letter-reviewed", text: "קראתי את המכתב המקדים", needsLetter: true },
+  { key: "manual-submit", text: "ידוע לי שההגשה מתבצעת על ידי באתר החברה — המערכת לא שולחת דבר בשמי" },
+];
+const flowBackdrop = document.getElementById("flow-modal-backdrop");
+const flowBody = document.getElementById("flow-body");
+let FLOW = null;   // { jobId, job, app, verification, step, unknownOk, letterSkipped, dirty, busy, changed }
+
+const flowSubmitted = () => !!FLOW.app?.submission?.submitted_at;
+
+function flowCanAdvance(i) {
+  const { app, verification: v } = FLOW;
+  switch (FLOW_STEPS[i].key) {
+    case "verify": return flowSubmitted() || (!!v && v.status !== "closed" && (v.status === "open" || FLOW.unknownOk));
+    case "match": return true;
+    case "cv": return !!app?.cv;
+    case "letter": return !!app?.letter || FLOW.letterSkipped;
+    case "approve": return !!app?.approval || flowSubmitted();
+    case "apply": return true;
+    case "confirm": return flowSubmitted();
+    default: return false;
+  }
+}
+const flowReachable = (i) => FLOW_STEPS.slice(0, i).every((_, j) => flowCanAdvance(j));
+
+// Resume where the record left off; a job that turned out closed always goes back to step 1.
+function flowResumeStep() {
+  const app = FLOW.app;
+  if (flowSubmitted()) return 7;
+  if (FLOW.verification?.status === "closed") return 0;
+  if (FLOW.verification?.status === "unknown" && !FLOW.unknownOk) return 0;
+  if (app?.approval) return 5;
+  if (app?.cv && (app?.letter || FLOW.letterSkipped)) return 4;
+  if (app?.cv) return 3;
+  return 0;
+}
+
+window.openFlow = async (jobId) => {
+  FLOW = { jobId, job: null, app: null, verification: null, step: 0, unknownOk: false, letterSkipped: false, dirty: false, busy: false, changed: false };
+  flowBackdrop.classList.add("open");
+  document.getElementById("flow-subtitle").textContent = "";
+  flowLoading("טוען את המשרה...");
+  try {
+    const r = await api(`/api/applications/get?jobId=${encodeURIComponent(jobId)}`);
+    if (!r.job) throw new Error("משרה לא נמצאה");
+    FLOW.job = r.job;
+    FLOW.app = r.application;
+    // An approval without a letter means the user chose to skip it.
+    FLOW.letterSkipped = !!FLOW.app?.approval && !FLOW.app?.letter;
+    FLOW.unknownOk = !!FLOW.app?.approval && FLOW.app?.verification?.status === "unknown";
+    document.getElementById("flow-subtitle").textContent = `${r.job.title} · ${r.job.company}`;
+    if (!flowSubmitted()) {
+      flowLoading("בודק שהמשרה עדיין פתוחה...");
+      await flowVerify();
+    } else {
+      FLOW.verification = FLOW.app.verification || VERIFY[jobId] || null;
+    }
+    FLOW.step = flowResumeStep();
+    flowRender();
+  } catch (e) {
+    flowBody.className = "modal-body";
+    flowBody.innerHTML = `<div class="flow-warn">❌ ${escapeHtml(e.message)}</div>`;
+  }
+};
+
+async function flowVerify() {
+  try {
+    const r = await api("/api/verify", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: FLOW.jobId, force: true }),
+    });
+    FLOW.verification = r.verification;
+    VERIFY[FLOW.jobId] = r.verification;
+  } catch (e) {
+    FLOW.verification = { status: "unknown", reason: e.message, checked_at: "", trust: "ats", source_ok: false };
+  }
+}
+
+function flowLoading(msg) {
+  flowBody.className = "modal-body loading";
+  flowBody.innerHTML = `<div>${escapeHtml(msg)} <span class="spinner"></span></div>`;
+}
+
+function flowClose() {
+  if (FLOW?.dirty && !confirm("יש שינויים שלא נשמרו. לסגור בכל זאת?")) return;
+  flowBackdrop.classList.remove("open");
+  if (FLOW?.changed) {
+    loadTrackedIds().then(() => {
+      renderJobs();
+      if (document.getElementById("page-tracker").classList.contains("active")) loadTrackerPage();
+    });
+  }
+  FLOW = null;
+}
+document.getElementById("flow-close").addEventListener("click", flowClose);
+flowBackdrop.addEventListener("click", (e) => { if (e.target === flowBackdrop) flowClose(); });
+
+function flowGo(i) {
+  if (FLOW.busy || i < 0 || i >= FLOW_STEPS.length || !flowReachable(i)) return;
+  if (FLOW.dirty && !confirm("יש שינויים שלא נשמרו במסמך. לעבור שלב בלי לשמור?")) return;
+  FLOW.dirty = false;
+  FLOW.step = i;
+  flowRender();
+}
+window.flowGo = flowGo;
+// Move forward after an action completed (runs while FLOW.busy, so it can't go through flowGo).
+function flowAdvance() {
+  FLOW.dirty = false;
+  FLOW.step = Math.min(FLOW.step + 1, FLOW_STEPS.length - 1);
+  flowRender();
+}
+document.getElementById("flow-prev").addEventListener("click", () => flowGo(FLOW.step - 1));
+document.getElementById("flow-next").addEventListener("click", () => {
+  if (FLOW.step === FLOW_STEPS.length - 1) return flowClose();
+  flowGo(FLOW.step + 1);
+});
+
+function flowRender() {
+  document.getElementById("flow-steps").innerHTML = FLOW_STEPS.map((s, i) => {
+    const cls = i === FLOW.step ? "active" : (i < FLOW.step || flowCanAdvance(i)) && flowReachable(i) ? "done" : flowReachable(i) ? "" : "locked";
+    return `<li class="flow-step ${cls}" onclick="flowGo(${i})"><span class="flow-step-num">${i + 1}</span>${s.label}</li>`;
+  }).join("");
+
+  flowBody.className = "modal-body flow-body";
+  const key = FLOW_STEPS[FLOW.step].key;
+  flowBody.innerHTML = { verify: flowVerifyHtml, match: flowMatchHtml, cv: () => flowDocHtml("cv"), letter: () => flowDocHtml("letter"),
+    approve: flowApproveHtml, apply: flowApplyHtml, confirm: flowConfirmHtml, follow: flowFollowHtml }[key]();
+
+  const ta = document.getElementById("flow-doc");
+  if (ta) ta.addEventListener("input", () => { FLOW.dirty = true; flowFootNote(); });
+
+  document.getElementById("flow-prev").disabled = FLOW.step === 0;
+  const next = document.getElementById("flow-next");
+  const last = FLOW.step === FLOW_STEPS.length - 1;
+  next.textContent = last ? "סיום ✓" : "הבא ←";
+  next.disabled = !last && !flowCanAdvance(FLOW.step);
+  flowFootNote();
+}
+
+function flowFootNote() {
+  const notes = {
+    verify: "המשרה צריכה להיות פתוחה (או שתאשר שהיא לא אומתה)",
+    cv: "שמור קורות חיים מותאמים כדי להמשיך",
+    letter: "שמור מכתב, או דלג אם אין צורך",
+    approve: "סמן את כל הסעיפים ואשר",
+    confirm: "סמן שהגשת כדי להמשיך",
+  };
+  const key = FLOW_STEPS[FLOW.step].key;
+  document.getElementById("flow-foot-note").textContent =
+    FLOW.dirty ? "✏️ יש שינויים שלא נשמרו" : !flowCanAdvance(FLOW.step) ? (notes[key] || "") : "";
+}
+
+async function flowBusy(btn, label, fn) {
+  if (FLOW.busy) return;
+  FLOW.busy = true;
+  const orig = btn?.innerHTML;
+  if (btn) { btn.disabled = true; btn.innerHTML = `${label} <span class='spinner'></span>`; }
+  try { await fn(); }
+  catch (e) { toast("❌ " + e.message, true); }
+  finally {
+    FLOW.busy = false;
+    if (btn && document.body.contains(btn)) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+// ── Step 1: verification ──
+function flowVerifyHtml() {
+  const v = FLOW.verification || { status: "unknown", reason: "לא נבדק" };
+  let host = "";
+  try { host = new URL(FLOW.job.url).hostname; } catch {}
+  const apply = v.apply_status
+    ? (v.apply_status < 400 ? `✅ זמין (HTTP ${v.apply_status})` : `⚠️ מחזיר HTTP ${v.apply_status}`)
+    : FLOW.job.apply_url ? "לא נבדק" : "אין קישור הגשה נפרד — מגישים דרך דף המשרה";
+  return `
+    <div class="flow-status ${v.status}">
+      <b>${v.status === "open" && v.trust === "aggregator" ? "🟡 פתוחה בפיד" : VERIFY_LABEL[v.status]}</b>
+      <span>${escapeHtml(v.reason || "")}</span>
+    </div>
+    <ul class="flow-checks">
+      <li><span>מקור</span>${v.source_ok ? `✅ דומיין תקין למערכת הגיוס (${escapeHtml(host)})` : `⚠️ הקישור אינו בדומיין הצפוי (${escapeHtml(host || "—")})`}</li>
+      <li><span>אמינות</span>${v.trust === "aggregator" ? "🟡 נבדק באגרגטור בלבד — לא מול מערכת הגיוס של החברה" : "✅ נבדק מול מערכת הגיוס של החברה"}</li>
+      <li><span>קישור הגשה</span>${apply}</li>
+      <li><span>נבדק</span>${v.checked_at ? fmtAgo(v.checked_at) : "—"}</li>
+    </ul>
+    ${flowSubmitted() ? "" : `<button class="btn small" onclick="flowRecheck(this)">🔄 בדוק שוב</button>`}
+    ${v.status === "closed" && !flowSubmitted() ? `<div class="flow-warn">⛔ המשרה סגורה — אי אפשר להמשיך בהגשה.</div>` : ""}
+    ${v.status === "unknown" && !flowSubmitted() ? `
+      <label class="flow-check-row">
+        <input type="checkbox" ${FLOW.unknownOk ? "checked" : ""} onchange="FLOW.unknownOk = this.checked; flowRender()" />
+        לא ניתן לאמת שהמשרה פתוחה. אני מבין ורוצה להמשיך בכל זאת.
+      </label>` : ""}`;
+}
+window.flowRecheck = (btn) => flowBusy(btn, "בודק...", async () => { await flowVerify(); flowRender(); });
+
+// ── Step 2: match ──
+function flowMatchHtml() {
+  const j = FLOW.job;
+  const reasons = (j.reasons || []).map(r => {
+    const cls = /^[✓~★]/.test(r) ? "skill" : r.startsWith("↑") ? "kw" : "";
+    return `<span class="tag ${cls}">${escapeHtml(r)}</span>`;
+  }).join("");
+  const a = escapeAttr(j.id), t = escapeAttr(j.title), c = escapeAttr(j.company);
+  return `
+    <div class="flow-match">
+      <div class="badge ${j.grade || ""}"><b>${j.grade || "—"}</b><span class="score-num">${j.score ?? ""}</span></div>
+      <div>
+        <h4><a href="${escapeAttr(j.url)}" target="_blank" rel="noopener">${escapeHtml(j.title)}</a></h4>
+        <div class="job-meta">
+          <span>🏢 ${escapeHtml(j.company)}</span><span>📍 ${escapeHtml(j.location)}</span>
+          ${j.posted_at ? `<span>📅 פורסמה ${fmtAgo(j.posted_at)}</span>` : ""}
+        </div>
+        <div class="reasons">${reasons || `<span class="muted">אין ציון התאמה למשרה הזו בפרופיל הנוכחי</span>`}</div>
+      </div>
+    </div>
+    <p class="muted">כלים אופציונליים לפני שממשיכים:</p>
+    <div class="flow-actions">
+      <button class="btn small" onclick="generate('skill-gap','${a}','${t}','${c}')">🎯 ניתוח פערים</button>
+      <button class="btn small" onclick="companyDive('${c}')">🏢 מחקר על החברה</button>
+    </div>`;
+}
+
+// ── Steps 3–4: tailored CV and cover letter ──
+function flowDocHtml(kind) {
+  const doc = FLOW.app?.[kind];
+  const name = kind === "cv" ? "קורות חיים מותאמים" : "מכתב מקדים";
+  const locked = flowSubmitted();
+  const info = doc
+    ? `נשמר ${fmtAgo(doc.saved_at)} · ${doc.edited ? "✏️ נערך ידנית" : "✨ נוצר ע\"י AI"}${doc.lang && doc.lang !== "auto" ? " · " + doc.lang.toUpperCase() : ""}`
+    : "עוד לא נוצר";
+  const toolbar = locked ? `<div class="flow-note">🔒 המועמדות הוגשה — זו הגרסה שנשלחה.</div>` : `
+    <div class="flow-actions">
+      <select id="flow-lang" title="שפה">
+        <option value="auto">שפת המקור</option><option value="he">עברית</option><option value="en">English</option>
+      </select>
+      <button class="btn small ${doc ? "" : "primary"}" onclick="flowGenerate('${kind}', this)">✨ ${doc ? "צור מחדש" : "צור עם AI"}</button>
+      <button class="btn small" onclick="flowSaveDoc('${kind}', this)">💾 שמור עריכה</button>
+      ${kind === "letter" && !doc ? `<button class="btn small" onclick="flowSkipLetter()">דלג — אין צורך במכתב</button>` : ""}
+    </div>`;
+  return `
+    <div class="flow-doc-head"><b>${name}</b><span class="muted">${info}</span></div>
+    ${FLOW.app?.approval && !locked ? `<div class="flow-note">⚠️ שינוי המסמך יבטל את האישור, ותצטרך לאשר שוב.</div>` : ""}
+    ${toolbar}
+    ${doc
+      ? `<textarea id="flow-doc" class="flow-editor" ${locked ? "readonly" : ""}>${escapeHtml(doc.markdown)}</textarea>
+         <div class="flow-actions">${flowExportButtons(kind)}</div>`
+      : `<div class="empty">${kind === "cv"
+          ? "צור קורות חיים מותאמים למשרה. אפשר לערוך אותם לפני השמירה."
+          : "צור מכתב מקדים, או דלג אם המשרה לא דורשת מכתב."}</div>`}`;
+}
+
+function flowExportButtons(kind) {
+  return `
+    <button class="btn small" onclick="flowExport('${kind}','docx',this)">📄 DOCX</button>
+    <button class="btn small" onclick="flowExport('${kind}','pdf',this)">📕 PDF</button>
+    <button class="btn small" onclick="flowCopy('${kind}')">📋 העתק</button>`;
+}
+
+window.flowGenerate = (kind, btn) => {
+  if (!ACTIVE_PROFILE) return toast("❌ אין פרופיל פעיל", true);
+  if (FLOW.app?.[kind] && !confirm("ליצור מחדש? הגרסה הנוכחית תוחלף.")) return;
+  const lang = document.getElementById("flow-lang")?.value || "auto";
+  return flowBusy(btn, "מייצר...", async () => {
+    const r = await api(`/api/generate/${kind}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: FLOW.jobId, lang, save: true }),
+    });
+    FLOW.app = r.application;
+    FLOW.dirty = false;
+    FLOW.changed = true;
+    flowRender();
+    reportActualCost(kind);
+  });
+};
+
+window.flowSaveDoc = (kind, btn) => {
+  const markdown = document.getElementById("flow-doc")?.value;
+  if (!markdown?.trim()) return toast("❌ המסמך ריק", true);
+  return flowBusy(btn, "שומר...", async () => {
+    const r = await api("/api/applications/save", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: FLOW.jobId, kind, markdown }),
+    });
+    FLOW.app = r.application;
+    FLOW.dirty = false;
+    FLOW.changed = true;
+    toast("💾 נשמר");
+    flowRender();
+  });
+};
+
+window.flowSkipLetter = () => { FLOW.letterSkipped = true; flowGo(FLOW.step + 1); };
+
+function flowDocText(kind) {
+  // Export what's on screen when editing, else the saved version.
+  const ta = document.getElementById("flow-doc");
+  return (ta && FLOW_STEPS[FLOW.step].key === kind ? ta.value : FLOW.app?.[kind]?.markdown) || "";
+}
+function flowFileName(kind, ext) {
+  const base = `${kind === "cv" ? "CV" : "cover-letter"}-${FLOW.job.company}-${FLOW.job.title}`;
+  return `${base}.${ext}`.replace(/[^\w.֐-׿-]+/g, "_");
+}
+window.flowExport = (kind, format, btn) => flowBusy(btn, "מייצר...", async () => {
+  const fname = flowFileName(kind, format);
+  const r = await fetch(`/api/export/${format}`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: flowDocText(kind), filename: fname }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({ error: `HTTP ${r.status}` }))).error);
+  downloadBlob(await r.blob(), fname);
+  toast(`✅ הורד: ${fname}`);
+});
+window.flowCopy = async (kind) => {
+  await navigator.clipboard.writeText(flowDocText(kind));
+  toast("📋 הועתק");
+};
+
+// ── Step 5: explicit user approval ──
+function flowApproveHtml() {
+  const { app, verification: v } = FLOW;
+  const items = FLOW_CHECKLIST.filter(c => !c.needsLetter || app?.letter);
+  if (app?.approval) {
+    return `
+      <div class="flow-status open"><b>✅ אושר</b><span>${fmtDate(app.approval.at)}</span></div>
+      <ul class="flow-checks">${items.map(c => `<li><span>✓</span>${escapeHtml(c.text)}</li>`).join("")}</ul>
+      <p class="muted">שינוי קורות החיים או המכתב יבטל את האישור.</p>`;
+  }
+  return `
+    <ul class="flow-checks">
+      <li><span>משרה</span>${v ? (v.status === "open" && v.trust === "aggregator" ? "🟡 פתוחה בפיד" : VERIFY_LABEL[v.status]) : "—"}</li>
+      <li><span>קו"ח</span>${app?.cv ? `✅ ${app.cv.edited ? "נערכו ידנית" : "נוצרו ע\"י AI"}` : "❌ חסר"}</li>
+      <li><span>מכתב</span>${app?.letter ? `✅ ${app.letter.edited ? "נערך ידנית" : "נוצר ע\"י AI"}` : "— ללא מכתב"}</li>
+    </ul>
+    ${v?.status === "unknown" ? `<div class="flow-note">❔ המשרה לא אומתה — האישור יתועד יחד עם זה.</div>` : ""}
+    <div class="flow-checklist">
+      ${items.map(c => `<label class="flow-check-row"><input type="checkbox" class="flow-ck" value="${c.key}" onchange="flowCheckApprove()" /> ${escapeHtml(c.text)}</label>`).join("")}
+    </div>
+    <button class="btn primary" id="flow-approve-btn" disabled onclick="flowApprove(this)">✅ אני מאשר את ההגשה</button>`;
+}
+window.flowCheckApprove = () => {
+  const boxes = [...document.querySelectorAll(".flow-ck")];
+  document.getElementById("flow-approve-btn").disabled = !boxes.every(b => b.checked);
+};
+window.flowApprove = (btn) => flowBusy(btn, "בודק ומאשר...", async () => {
+  const checklist = [...document.querySelectorAll(".flow-ck:checked")].map(b => b.value);
+  try {
+    const r = await api("/api/applications/approve", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: FLOW.jobId, checklist, acceptUnknown: FLOW.unknownOk }),
+    });
+    FLOW.app = r.application;
+    FLOW.verification = r.application.verification;
+    FLOW.changed = true;
+    toast("✅ אושר");
+    flowAdvance();
+  } catch (e) {
+    // The server re-verifies; if the job closed meanwhile, show it on step 1.
+    await flowVerify();
+    if (FLOW.verification?.status !== "open") FLOW.step = 0;
+    flowRender();
+    throw e;
+  }
+});
+
+// ── Step 6: the user applies on the employer's page ──
+function flowApplyHtml() {
+  const { app, job } = FLOW;
+  const url = job.apply_url || job.url;
+  return `
+    <div class="flow-note">🔒 המערכת לא שולחת דבר בשמך. פתח את דף ההגשה, צרף את הקבצים והגש בעצמך.</div>
+    <button class="btn primary" onclick="flowOpenApply('${escapeAttr(url)}')">🔗 פתח את דף ההגשה</button>
+    ${app?.submission?.opened_at ? `<span class="muted"> · נפתח ${fmtAgo(app.submission.opened_at)}</span>` : ""}
+    <div class="flow-files">
+      <div><b>קורות חיים</b><div class="flow-actions">${flowExportButtons("cv")}</div></div>
+      ${app?.letter ? `<div><b>מכתב מקדים</b><div class="flow-actions">${flowExportButtons("letter")}</div></div>` : ""}
+    </div>
+    <p class="muted">אחרי שהגשת — המשך לשלב הבא כדי לתעד את ההגשה.</p>`;
+}
+window.flowOpenApply = async (url) => {
+  // Open synchronously (inside the click) so popup blockers allow it, then record it.
+  window.open(url, "_blank", "noopener");
+  try {
+    const r = await api("/api/applications/opened", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: FLOW.jobId }),
+    });
+    FLOW.app = r.application;
+    FLOW.changed = true;
+    flowRender();
+  } catch (e) { toast("❌ " + e.message, true); }
+};
+
+// ── Step 7: confirm the submission ──
+function flowConfirmHtml() {
+  const { app } = FLOW;
+  if (flowSubmitted()) {
+    return `
+      <div class="flow-status open"><b>📤 הוגש</b><span>${fmtDate(app.submission.submitted_at)}</span></div>
+      ${app.confirmation ? `<div class="flow-evidence"><b>ראיה להגשה:</b><pre>${escapeHtml(app.confirmation.evidence)}</pre></div>` : `<p class="muted">לא צורפה ראיה להגשה.</p>`}`;
+  }
+  return `
+    <p>אין דרך ציבורית לבדוק הגשה במערכת הגיוס של החברה — האישור שלך והראיה הם התיעוד.</p>
+    <textarea id="flow-evidence" class="flow-editor flow-evidence-input" placeholder="מספר אסמכתא, או הדבק את מייל האישור מהחברה (לא חובה)"></textarea>
+    <button class="btn primary" onclick="flowSubmitted_(this)">📤 הגשתי את המועמדות</button>`;
+}
+window.flowSubmitted_ = (btn) => {
+  if (!confirm("לסמן שהגשת את המועמדות? אחרי זה המסמכים יינעלו.")) return;
+  const evidence = document.getElementById("flow-evidence")?.value || "";
+  return flowBusy(btn, "שומר...", async () => {
+    const r = await api("/api/applications/submitted", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: FLOW.jobId, evidence }),
+    });
+    FLOW.app = r.application;
+    FLOW.changed = true;
+    await loadTrackedIds();   // follow-up tools read TRACKED
+    toast("📤 תועד — המשרה עברה ל'הגשתי' במעקב");
+    flowAdvance();
+  });
+};
+
+// ── Step 8: tracking and follow-up ──
+function flowFollowHtml() {
+  const { app, job } = FLOW;
+  const t = TRACKED.find(x => x.id === FLOW.jobId);
+  const statusLabel = { interested: "👀 מתעניין", applied: "📤 הגשתי", interview: "🎤 ראיון", offer: "🎉 הצעה", rejected: "❌ נדחה" };
+  const days = t?.applied_at ? Math.floor((Date.now() - new Date(t.applied_at).getTime()) / 86400000) : null;
+  const a = escapeAttr(job.id), ti = escapeAttr(job.title), c = escapeAttr(job.company);
+  const events = (app?.events || []).slice().reverse().map(e =>
+    `<li><span>${fmtDate(e.at)}</span>${escapeHtml(e.type)}${e.note ? ` · ${escapeHtml(e.note)}` : ""}</li>`).join("");
+  return `
+    <ul class="flow-checks">
+      <li><span>מעקב</span>${t ? `${statusLabel[t.status] || t.status}${days === 0 ? " · הוגש היום" : days !== null ? ` · ${days} ימים מאז ההגשה` : ""}` : "לא במעקב"}</li>
+      <li><span>Follow-up</span>${days !== null && days >= 5 ? "📧 הגיע הזמן לשלוח follow-up" : "📧 אחרי 5 ימים יופיע בכרטיס המעקב 'שווה follow-up'"}</li>
+    </ul>
+    <div class="flow-actions">
+      ${t ? `<button class="btn small" onclick="generateFollowup('${a}')">📧 צור הודעת Follow-up</button>` : ""}
+      <button class="btn small" onclick="generate('interview','${a}','${ti}','${c}')">🎤 הכנה לראיון</button>
+      <button class="btn small" onclick="openMockInterview('${a}','${ti}','${c}')">💬 ראיון דמה</button>
+      <button class="btn small" onclick="flowToTracker()">🎯 פתח את המעקב</button>
+    </div>
+    ${events ? `<details class="flow-log"><summary>יומן הגשה</summary><ul>${events}</ul></details>` : ""}`;
+}
+window.flowToTracker = () => {
+  flowClose();
+  if (!FLOW) document.querySelector('.tab[data-tab="tracker"]').click();
+};
 
 // ═══════════════ Init ═══════════════
 (async () => {
