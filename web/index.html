@@ -65,6 +65,8 @@
       <option value="">הכל</option>
       <option value="new">🆕 חדשות בלבד</option>
       <option value="restored">♻️ משוחזרות בלבד</option>
+      <option value="open">✅ פתוחות (מאומתות)</option>
+      <option value="closed">⛔ נסגרו</option>
     </select>
     <select id="company"><option value="">כל החברות</option></select>
     <select id="location"><option value="">כל המיקומים</option></select>
@@ -84,6 +86,9 @@
     <div class="page-title">
       <h2>🎯 מעקב הגשות</h2>
       <span class="muted" id="tracker-stats"></span>
+    </div>
+    <div class="page-actions">
+      <button class="btn" onclick="verifyTracked(this)" title="בודק מול מערכות הגיוס אם המשרות במעקב עדיין פתוחות">🔍 אמת משרות במעקב</button>
     </div>
   </div>
   <div class="kanban" id="kanban">

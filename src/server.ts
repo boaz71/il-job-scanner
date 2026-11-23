@@ -41,6 +41,7 @@ import {
 } from "./automation.js";
 import { getSummary as getCostSummary } from "./costs.js";
 import { getCacheStats, clearCache } from "./cache.js";
+import { loadStatuses, effectiveStatus, verifyJobs } from "./verify.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -476,6 +477,46 @@ const server = createServer(async (req, res) => {
     }
 
     // ── Tracker ──
+    // ── Job verification ──
+    if (pathname === "/api/verify/status" && method === "GET") {
+      const stored = loadStatuses();
+      const statuses: Record<string, any> = {};
+      for (const j of loadCurrentJobs()) statuses[j.id] = effectiveStatus(j, stored[j.id], true);
+      for (const t of listTracked()) {
+        if (!statuses[t.id]) statuses[t.id] = effectiveStatus(t.job, stored[t.id], false);
+      }
+      return sendJSON(res, 200, { statuses });
+    }
+    if (pathname === "/api/verify" && method === "POST") {
+      const body = await readBody(req);
+      const { jobId, force } = JSON.parse(body.toString("utf-8"));
+      const tracked = listTracked();
+      const job = loadCurrentJobs().find((j) => j.id === jobId) || tracked.find((t) => t.id === jobId)?.job;
+      if (!job) return sendJSON(res, 404, { error: "משרה לא נמצאה" });
+      const r = await verifyJobs([job], { force: !!force, checkApplyLink: true, keepIds: new Set(tracked.map((t) => t.id)) });
+      return sendJSON(res, 200, { ok: true, verification: r[job.id] });
+    }
+    if (pathname === "/api/verify/batch" && method === "POST") {
+      const body = await readBody(req);
+      const { jobIds, scope, force } = JSON.parse(body.toString("utf-8") || "{}");
+      const tracked = listTracked();
+      let jobs: Job[];
+      if (scope === "tracked") {
+        jobs = tracked.map((t) => t.job);
+      } else {
+        if (!Array.isArray(jobIds)) return sendJSON(res, 400, { error: "חסר jobIds או scope" });
+        const current = loadCurrentJobs();
+        jobs = jobIds
+          .map((id: string) => current.find((j) => j.id === id) || tracked.find((t) => t.id === id)?.job)
+          .filter(Boolean) as Job[];
+      }
+      if (jobs.length > 100) return sendJSON(res, 400, { error: "עד 100 משרות בבדיקה אחת" });
+      const r = await verifyJobs(jobs, { force: !!force, keepIds: new Set(tracked.map((t) => t.id)) });
+      const counts = { open: 0, closed: 0, unknown: 0 };
+      for (const v of Object.values(r)) counts[v.status]++;
+      return sendJSON(res, 200, { ok: true, statuses: r, counts });
+    }
+
     if (pathname === "/api/tracker" && method === "GET") {
       return sendJSON(res, 200, { tracked: listTracked() });
     }

@@ -2360,3 +2360,28 @@ a:hover { text-decoration: underline; }
   .profile-switcher select { min-width: 160px; }
   .page { padding: 16px; }
 }
+
+/* ─── Job verification badge ─── */
+.verify-badge {
+  display: inline-block;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--fg-soft);
+  margin-right: 6px;
+  vertical-align: middle;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.verify-badge:hover { border-color: var(--border-strong); }
+.verify-badge:disabled { cursor: wait; opacity: .7; }
+.verify-badge.open { color: var(--a); border-color: color-mix(in srgb, var(--a) 45%, transparent); }
+.verify-badge.open.agg { color: var(--c); border-color: color-mix(in srgb, var(--c) 45%, transparent); }
+.verify-badge.closed { color: var(--f); border-color: color-mix(in srgb, var(--f) 45%, transparent); }
+.verify-badge.unknown { color: var(--muted); }
+.tc-verify { margin: 4px 0 2px; }
+.tc-verify .verify-badge { margin-right: 0; }

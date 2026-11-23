@@ -5,6 +5,7 @@ let ACTIVE_PROFILE = null;
 let SCANS = [];
 let TRACKED = [];
 let TRACKED_IDS = new Set();
+let VERIFY = {};   // jobId → verification (see src/verify.ts)
 
 // ═══════════════ Cost guard ═══════════════
 // Realistic cost estimates based on actual usage (web_search adds ~$0.10-0.20 per call)
@@ -259,9 +260,66 @@ async function loadJobs() {
     JOBS = r.ok ? await r.json() : [];
   } catch { JOBS = []; }
   await loadTrackedIds();
+  await loadVerifyStatus();
   initJobFilters();
   renderJobs();
 }
+
+// ═══════════════ Job verification ═══════════════
+async function loadVerifyStatus() {
+  try { VERIFY = (await api("/api/verify/status")).statuses || {}; }
+  catch { VERIFY = {}; }
+}
+
+function fmtAgo(iso) {
+  if (!iso) return "";
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 60) return `לפני ${mins} דק'`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `לפני ${hours} שע'`;
+  return `לפני ${Math.round(hours / 24)} ימים`;
+}
+
+const VERIFY_LABEL = { open: "✅ פתוחה", closed: "⛔ נסגרה", unknown: "❔ לא ידוע" };
+
+function verifyBadge(id) {
+  const v = VERIFY[id] || { status: "unknown", reason: "לא נבדקה עדיין" };
+  const label = v.status === "open" && v.trust === "aggregator" ? "🟡 פתוחה בפיד" : VERIFY_LABEL[v.status];
+  const when = v.checked_at ? ` · נבדק ${fmtAgo(v.checked_at)}` : "";
+  const tip = `${v.reason}${when}\nלחץ לבדיקה עכשיו`;
+  return `<button class="verify-badge ${v.status}${v.trust === "aggregator" ? " agg" : ""}" title="${escapeAttr(tip)}" onclick="verifyNow('${escapeAttr(id)}', this)">${label}</button>`;
+}
+
+window.verifyNow = async (id, btn) => {
+  if (btn) { btn.disabled = true; btn.innerHTML = "בודק... <span class='spinner'></span>"; }
+  try {
+    const r = await api("/api/verify", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: id, force: true }),
+    });
+    VERIFY[id] = r.verification;
+    toast(`${VERIFY_LABEL[r.verification.status]} · ${r.verification.reason}`, r.verification.status === "closed");
+  } catch (e) { toast("❌ " + e.message, true); }
+  renderJobs();
+  if (document.getElementById("page-tracker").classList.contains("active")) loadTrackerPage();
+};
+
+window.verifyTracked = async (btn) => {
+  if (!TRACKED.length) return toast("אין משרות במעקב");
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.innerHTML = `בודק ${TRACKED.length} משרות... <span class='spinner'></span>`;
+  try {
+    const r = await api("/api/verify/batch", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope: "tracked", force: true }),
+    });
+    Object.assign(VERIFY, r.statuses);
+    toast(`✅ ${r.counts.open} פתוחות · ⛔ ${r.counts.closed} נסגרו · ❔ ${r.counts.unknown} לא ידוע`);
+    await loadTrackerPage();
+  } catch (e) { toast("❌ " + e.message, true); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+};
 
 async function loadTrackedIds() {
   try {
@@ -309,6 +367,8 @@ function renderJobs() {
     if (source === "remote" && !REMOTE_SOURCES.has(j.ats)) return false;
     if (special === "new" && !j.is_new) return false;
     if (special === "restored" && !j.is_restored) return false;
+    if (special === "open" && VERIFY[j.id]?.status !== "open") return false;
+    if (special === "closed" && VERIFY[j.id]?.status !== "closed") return false;
     if (company && j.company !== company) return false;
     if (location && j.location !== location) return false;
     return true;
@@ -323,6 +383,8 @@ function renderJobs() {
   let statsText = `${f.length} מתוך ${JOBS.length}`;
   if (newCount) statsText += ` · ${newCount} חדשות 🆕`;
   if (restoredCount) statsText += ` · ${restoredCount} משוחזרות ♻️`;
+  const closedCount = JOBS.filter(j => VERIFY[j.id]?.status === "closed").length;
+  if (closedCount) statsText += ` · ${closedCount} נסגרו ⛔`;
   document.getElementById("jobs-stats").textContent = statsText;
 
   const list = document.getElementById("jobs-list");
@@ -367,11 +429,13 @@ function renderJobs() {
               ${newBadge}${restoredBadge}
               <a href="${escapeAttr(j.url)}" target="_blank" rel="noopener">${escapeHtml(j.title)}</a>
               <span class="src-badge ${src.class}" title="${src.label}">${src.icon}</span>
+              ${verifyBadge(j.id)}
             </h3>
             <div class="job-meta">
               <span>🏢 ${escapeHtml(j.company)}</span>
               <span>📍 ${escapeHtml(j.location)}</span>
               <span>📂 ${escapeHtml(j.department)}</span>
+              ${j.posted_at ? `<span title="${escapeAttr(fmtDate(j.posted_at))}">📅 פורסמה ${fmtAgo(j.posted_at)}</span>` : ""}
             </div>
             <div class="reasons">${reasons}</div>
           </div>
@@ -579,6 +643,7 @@ window.toggleTrack = async (jobId) => {
 
 async function loadTrackerPage() {
   await loadTrackedIds();
+  await loadVerifyStatus();
   document.getElementById("tracker-stats").textContent = `${TRACKED.length} משרות במעקב`;
   const cols = ["interested", "applied", "interview", "offer", "rejected"];
   for (const status of cols) {
@@ -604,6 +669,7 @@ function renderTrackedCard(t) {
       <span class="tc-grade ${grade}">${grade}</span>
       <a href="${escapeAttr(t.job.url)}" target="_blank" class="tc-title">${escapeHtml(t.job.title)}</a>
       <div class="tc-meta">🏢 ${escapeHtml(t.job.company)} · 📍 ${escapeHtml(t.job.location)}${daysLabel}</div>
+      <div class="tc-verify">${verifyBadge(t.id)}</div>
       ${t.notes ? `<div class="tc-note">📝 ${escapeHtml(t.notes)}</div>` : ""}
       ${followupAlert}
       <div class="tc-actions">
