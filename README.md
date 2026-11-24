@@ -4,55 +4,76 @@
 > **Status:** Active  
 > **Category:** Job Search Automation
 
-סורק משרות טק ישראלי — סורק משרות מחברות טק ישראליות דרך APIs ציבוריים של מערכות ATS, ללא scraping, ללא proxies, ללא אימות.
+מערכת חיפוש עבודה למפתחים בישראל — סורקת משרות מחברות טק דרך APIs ציבוריים של מערכות ATS (ללא scraping, ללא proxies, ללא אימות), ומלווה אותך מאיתור משרה ועד הגשה, מעקב והכנה לראיון.
+
+> המערכת מכינה, מאמתת ומתעדת — **היא לא מגישה מועמדות בשמך**. ההגשה נעשית על ידך באתר החברה, אחרי אישור מפורש.
 
 ## ✨ Features
 
-- 🏢 **Multi-ATS Support** — Greenhouse, Lever, Ashby
-- 🎯 **Smart Matching** — ציון התאמה A-F לפי פרופיל אישי
-- 🔑 **Keyword Filtering** — סינון לפי מיקום / מילות מפתח
-- ➕ **Easy Company Add** — הוספת חברות חדשות בפקודה אחת
-- 📄 **CV Tailoring** — התאמת CV אוטומטית (בפיתוח)
+- 🏢 **Multi-ATS** — Greenhouse, Lever, Ashby + אגרגטורים של משרות רימוט (Remotive, RemoteOK)
+- ✅ **אימות משרות** — בדיקה מול מערכת הגיוס אם המשרה עדיין פתוחה, זיהוי משרות שנסגרו בכל סריקה
+- 🎯 **ציון התאמה A-F** לפי פרופיל אישי, עם פרופילים וקורות חיים מרובים
+- 🚀 **מסלול הגשה** — אימות → התאמה → קו"ח מותאמים → מכתב מקדים → אישור → פתיחת דף ההגשה → תיעוד → מעקב
+- 📁 **תיק הגשה לכל משרה** — מה נשלח, עם איזה פרופיל, מתי אושר ומתי הוגש
+- 🎯 **מעקב (קנבן)** עם "הצעד הבא" לכל משרה ותזכורת follow-up
+- 🧭 **מנטור AI** שמכיר את המשרות שבתהליך
+- 🎤 הכנה לראיון, ראיון דמה, ניתוח פערים, הכנה למו"מ שכר, הודעות LinkedIn
+- 📝 עורך קו"ח מובנה (עברית/אנגלית) עם ייצוא DOCX / PDF
+- ⏰ סריקה אוטומטית והתראות בטלגרם על משרות חדשות ועל משרות במעקב שנסגרו
 
 ## 🚀 Quick Start
 
 ```bash
 npm install
-npm run scan        # סריקת כל החברות
-npm run match       # ציון התאמה למשרות
-npm run web         # ממשק ווב
+cp .env.example .env   # הגדר ANTHROPIC_API_KEY (או GEMINI_API_KEY)
+npm run web            # ממשק ווב — http://localhost:5174
 ```
+
+פקודות נוספות:
+
+```bash
+npm run scan           # סריקת כל החברות (CLI)
+npm run match          # ציון התאמה (CLI)
+npm test               # טסטים
+```
+
+לסריקה אוטומטית רציפה הרץ את השרת תחת PM2: `pm2 start ecosystem.config.cjs`.
 
 ## 📁 Structure
 
 ```
-├── companies.json      ← 20 חברות + tokens
-├── profile.json        ← פרופיל המשתמש
+├── companies.json        ← חברות + tokens
+├── profile.json          ← פרופיל (CLI)
 ├── src/
-│   ├── scanner.ts      ← סורק ראשי
-│   ├── matcher.ts      ← ציון התאמה A-F
-│   ├── types.ts
-│   └── ats/
-│       ├── greenhouse.ts
-│       ├── lever.ts
-│       └── ashby.ts
-└── data/               ← output
-    ├── jobs.json
-    └── scan-results.json
+│   ├── server.ts         ← שרת HTTP + API
+│   ├── scanner.ts        ← סריקה
+│   ├── ats/              ← Greenhouse, Lever, Ashby, Remotive, RemoteOK
+│   ├── matcher.ts        ← ציון התאמה A-F
+│   ├── verify.ts         ← אימות משרות
+│   ├── applications.ts   ← תיק הגשה וכללי מסלול ההגשה
+│   ├── tracker.ts        ← מעקב
+│   ├── pipeline.ts       ← הצעד הבא לכל משרה
+│   ├── automation.ts     ← סריקה אוטומטית והתראות
+│   ├── cv.ts, llm.ts     ← פיצ'רי AI וניתוב ספקים
+│   └── …
+├── web/                  ← ממשק (index.html, app.js, style.css)
+├── test/                 ← טסטים (node:test)
+└── data/                 ← נתונים מקומיים (לא ב-git)
 ```
 
 ## 🎯 Supported ATS APIs
 
-| ATS | Auth |
-|-----|------|
-| Greenhouse | ללא |
-| Lever | ללא |
-| Ashby | ללא |
+| ATS | Auth | אימות משרה |
+|-----|------|------------|
+| Greenhouse | ללא | API למשרה בודדת |
+| Lever | ללא | API למשרה בודדת |
+| Ashby | ללא | הופעה בלוח המשרות |
+| Remotive / RemoteOK | ללא | דף המשרה (אמינות נמוכה) |
 
 ## 🗺️ Roadmap
 
 - [x] שלב 1: סריקה בסיסית
-- [ ] שלב 2: חיבור טלגרם
-- [ ] שלב 3: התאמת CV אוטומטית
-- [ ] שלב 4: הגשה semi-auto עם אישור בטלגרם
-- [ ] שלב 5: cron — סריקה אוטומטית כל 6 שעות
+- [~] שלב 2: חיבור טלגרם — התראות יוצאות קיימות; כפתורים ופקודות בתכנון
+- [x] שלב 3: התאמת CV אוטומטית (במסלול ההגשה)
+- [~] שלב 4: הגשה semi-auto — קיימת בממשק; אישור מטלגרם בתכנון
+- [~] שלב 5: סריקה אוטומטית כל 6 שעות — טיימר בתוך השרת (דורש שהשרת ירוץ, למשל עם PM2)

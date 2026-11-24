@@ -29,6 +29,7 @@ const EXPENSIVE_OPS = {
   "improve":           { cost: "$0.03-0.06", time: "15-25s", web: false },
   "analyze":           { cost: "$0.02-0.04", time: "15-25s", web: false },
   "profile-insights":  { cost: "$0.10-0.20", time: "15-30s", web: true },
+  "cv":                { cost: "$0.02-0.06", time: "10-20s", web: false },
 };
 
 function confirmCost(opType) {
@@ -537,7 +538,7 @@ const GEN_LABELS = {
 window.generate = async (type, jobId, jobTitle, company, opts = {}) => {
   if (!ACTIVE_PROFILE) { toast("❌ אין פרופיל פעיל", true); return; }
   // Cost confirmation for expensive ops
-  const opMap = { "interview": "interview-prep", "skill-gap": "skill-gap", "salary": "salary" };
+  const opMap = { "interview": "interview-prep", "skill-gap": "skill-gap", "salary": "salary", "cv": "cv" };
   if (opMap[type] && !confirmCost(opMap[type])) return;
   const meta = GEN_LABELS[type] || { name: type, time: "" };
   const suffix = opts.lang === "en" ? " · EN" : "";
@@ -3397,6 +3398,7 @@ function flowExportButtons(kind) {
 window.flowGenerate = (kind, btn) => {
   if (!ACTIVE_PROFILE) return toast("❌ אין פרופיל פעיל", true);
   if (FLOW.app?.[kind] && !confirm("ליצור מחדש? הגרסה הנוכחית תוחלף.")) return;
+  if (kind === "cv" && !confirmCost("cv")) return;
   const lang = document.getElementById("flow-lang")?.value || "auto";
   return flowBusy(btn, "מייצר...", async () => {
     const r = await api(`/api/generate/${kind}`, {
