@@ -21,15 +21,9 @@ export interface MentorMessage {
   at: string;
 }
 
-export interface MentorCheckin {
-  at: string;
-  summary: string;
-}
-
 export interface MentorState {
   goal: MentorGoal | null;
   conversations: MentorMessage[];
-  checkins: MentorCheckin[];
   created_at: string;
   updated_at: string;
 }
@@ -37,7 +31,6 @@ export interface MentorState {
 const DEFAULT: MentorState = {
   goal: null,
   conversations: [],
-  checkins: [],
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 };
@@ -82,12 +75,5 @@ export function addMessage(role: "user" | "assistant", content: string): MentorS
 export function clearConversations(): void {
   const s = loadMentor();
   s.conversations = [];
-  saveMentor(s);
-}
-
-export function addCheckin(summary: string): void {
-  const s = loadMentor();
-  s.checkins.push({ at: new Date().toISOString(), summary });
-  if (s.checkins.length > 50) s.checkins = s.checkins.slice(-50);
   saveMentor(s);
 }

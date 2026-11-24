@@ -18,6 +18,9 @@ export interface Job {
   company: string;
   ats: AtsType;
   scanned_at: string;
+  apply_url?: string;       // direct application URL from the ATS (when provided)
+  posted_at?: string;       // ISO — when the source says the job was published
+  updated_at?: string;      // ISO — last update per source (Greenhouse)
   is_new?: boolean;
   is_restored?: boolean;
   restored_from?: string;   // scan id

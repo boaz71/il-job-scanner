@@ -65,6 +65,9 @@
       <option value="">הכל</option>
       <option value="new">🆕 חדשות בלבד</option>
       <option value="restored">♻️ משוחזרות בלבד</option>
+      <option value="open">✅ פתוחות (מאומתות)</option>
+      <option value="closed">⛔ נסגרו</option>
+      <option value="hidden">🙈 מוסתרות</option>
     </select>
     <select id="company"><option value="">כל החברות</option></select>
     <select id="location"><option value="">כל המיקומים</option></select>
@@ -84,6 +87,9 @@
     <div class="page-title">
       <h2>🎯 מעקב הגשות</h2>
       <span class="muted" id="tracker-stats"></span>
+    </div>
+    <div class="page-actions">
+      <button class="btn" onclick="verifyTracked(this)" title="בודק מול מערכות הגיוס אם המשרות במעקב עדיין פתוחות">🔍 אמת משרות במעקב</button>
     </div>
   </div>
   <div class="kanban" id="kanban">
@@ -442,6 +448,18 @@
         </select>
       </label>
     </div>
+    <div class="form-row">
+      <label>
+        <input type="checkbox" id="tg-interactive" />
+        טלגרם דו-כיווני — כפתורים בהתראות (⭐ / 🚀 / 🙈), אישור הגשה מהטלפון ו-/status
+      </label>
+    </div>
+    <div class="form-row">
+      <label>כתובת הממשק (לא חובה — לקישור "פתח במחשב"):
+        <input type="text" id="tg-appurl" placeholder="http://192.168.1.10:5174" />
+      </label>
+    </div>
+    <div class="muted" id="tg-status" style="font-size:13px"></div>
     <div style="margin-top:12px; display:flex; gap:8px">
       <button class="btn primary" id="tg-save">💾 שמור</button>
       <button class="btn" id="tg-test">🧪 שלח הודעת בדיקה</button>
@@ -644,6 +662,26 @@
 </section>
 
 <!-- ═══════════════ MODALS ═══════════════ -->
+
+<!-- Submission flow modal (before the generation modal so tools opened from it stack on top) -->
+<div class="modal-backdrop" id="flow-modal-backdrop">
+  <div class="modal flow-modal">
+    <div class="modal-head">
+      <div class="flow-head-title">
+        <h3 id="flow-title">🚀 מסלול הגשה</h3>
+        <span class="muted" id="flow-subtitle"></span>
+      </div>
+      <button class="icon-btn" id="flow-close">✕</button>
+    </div>
+    <ol class="flow-steps" id="flow-steps"></ol>
+    <div class="modal-body" id="flow-body"></div>
+    <div class="modal-foot flow-foot">
+      <button class="btn" id="flow-prev">→ הקודם</button>
+      <span class="flow-foot-note muted" id="flow-foot-note"></span>
+      <button class="btn primary" id="flow-next">הבא ←</button>
+    </div>
+  </div>
+</div>
 
 <!-- Generation modal -->
 <div class="modal-backdrop" id="modal-backdrop">

@@ -614,7 +614,7 @@ ${jobsContext.slice(0, 2000)}
 export async function generateLinkedInOutreach(cvText: string, job: Job): Promise<string> {
   return cachedGenerate({
     type: "linkedin",
-    cacheKey: [job.id],
+    cacheKey: [job.id, cvText],  // cvText: a different profile/CV must not reuse the text
     model: cheapModel(),
     maxTokens: 1000,
     messages: [{
@@ -661,7 +661,7 @@ ${cvText.slice(0, 2000)}
 export async function generateFollowUp(cvText: string, job: Job, daysSinceApplied: number): Promise<string> {
   return cachedGenerate({
     type: "followup",
-    cacheKey: [job.id, String(daysSinceApplied)],
+    cacheKey: [job.id, String(daysSinceApplied), cvText],
     model: cheapModel(),
     maxTokens: 800,
     viaLlmRouter: true,
@@ -1297,6 +1297,7 @@ export interface MentorContext {
   cvText: string | null;
   trackedSummary: string;          // "5 interested, 2 applied, 1 interview"
   recentActivity: string;          // "3 משרות חדשות נוספו השבוע, 1 הוגשה"
+  pipeline?: string;               // per-job lines: stage · days → next step (pipeline.ts)
   conversationHistory: { role: "user" | "assistant"; content: string }[];
 }
 
@@ -1321,7 +1322,7 @@ ${goalText}
 ${cvSnippet}
 **סטטוס המעקב הנוכחי:** ${ctx.trackedSummary}
 **פעילות אחרונה:** ${ctx.recentActivity}
-
+${ctx.pipeline ? `\n**משרות בתהליך (משרה · סטטוס · זמן → הצעד הבא):**\n${ctx.pipeline}\n` : ""}
 **איך אתה צריך להתנהג:**
 - כמו מנטור אמיתי, לא בוט. ישיר, חם אבל לא מתחנף.
 - שאל שאלות חודרות כשצריך — אל תיתן עצות גנריות.
@@ -1329,6 +1330,7 @@ ${cvSnippet}
 - כשהמועמד אומר "אני תקוע" — חקור למה לפני שתציע פתרונות.
 - הזכר את המטרה שלו אם הוא נסחף לדברים לא רלוונטיים.
 - אם הוא לא עשה כלום שבוע שלם — שאל למה, אל תתעלם.
+- כשהמועמד שואל מה לעשות — התבסס על רשימת המשרות בתהליך וציין משרות ספציפיות בשמן והצעד הבא בכל אחת.
 - ציין מספרים ספציפיים מהמעקב כשרלוונטי ("יש לך 5 משרות במצב interested מ-3 שבועות, מה קורה?").
 - שמור על תשובות קצרות יחסית — זו שיחה, לא הרצאה. (3-6 משפטים בד"כ).
 - בסוף הודעה — שאל שאלה אחת ממוקדת (חוץ מאם זה ברור שלא צריך).
@@ -1417,7 +1419,7 @@ ${reposSummary}
 export async function generateCoverLetter(cvText: string, job: Job, lang: Lang = "auto"): Promise<string> {
   return cachedGenerate({
     type: "cover-letter",
-    cacheKey: [job.id, lang],
+    cacheKey: [job.id, lang, cvText],  // cvText: a different profile/CV must not reuse the letter
     model: cheapModel(),
     maxTokens: 1500,
     messages: [

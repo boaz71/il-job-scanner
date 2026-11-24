@@ -8,6 +8,8 @@ import { fetchRemotive } from "./ats/remotive.js";
 import { fetchRemoteOK } from "./ats/remoteok.js";
 import { archiveScan } from "./scans.js";
 import { markNewJobs } from "./automation.js";
+import { applyScanDiff } from "./verify.js";
+import { listTracked } from "./tracker.js";
 import type { Company, Job } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -82,7 +84,22 @@ export async function runScan(opts: ScanOptions = {}): Promise<ScanResult> {
   // Save current
   const dataDir = resolve(ROOT, "data");
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
-  writeFileSync(resolve(dataDir, "jobs.json"), JSON.stringify(filtered, null, 2));
+  const jobsPath = resolve(dataDir, "jobs.json");
+
+  // Verification: jobs we knew about (previous scan + tracked) that vanished from a
+  // company board that fetched successfully are now closed. Compare against the
+  // unfiltered fetch so keyword/location filters don't count as closures.
+  try {
+    const prev: Job[] = existsSync(jobsPath) ? JSON.parse(readFileSync(jobsPath, "utf-8")) : [];
+    const tracked = listTracked();
+    const okCompanies = companies.filter((c) => !errors.includes(c.name));
+    const diff = applyScanDiff([...prev, ...tracked.map((t) => t.job)], allJobs, okCompanies, new Set(tracked.map((t) => t.id)));
+    if (diff.closed.length) log(`⛔ ${diff.closed.length} משרות נסגרו מאז הסריקה הקודמת`);
+  } catch (e: any) {
+    log(`⚠️ בדיקת משרות שנסגרו נכשלה: ${e.message.slice(0, 60)}`);
+  }
+
+  writeFileSync(jobsPath, JSON.stringify(filtered, null, 2));
 
   const scannedAt = new Date().toISOString();
   writeFileSync(resolve(dataDir, "scan-results.json"), JSON.stringify({

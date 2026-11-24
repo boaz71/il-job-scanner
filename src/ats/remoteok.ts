@@ -1,4 +1,5 @@
 import type { Job } from "../types.js";
+import { fetchJson, toIso } from "./http.js";
 
 /**
  * RemoteOK — public API for remote tech jobs.
@@ -11,22 +12,23 @@ export async function fetchRemoteOK(tag: string, label: string): Promise<Job[]> 
   const url = tag && tag !== "all"
     ? `https://remoteok.com/api?tag=${encodeURIComponent(tag)}`
     : "https://remoteok.com/api";
-  const res = await fetch(url, {
+  const data = await fetchJson(url, {
     headers: { "User-Agent": "il-job-scanner/1.0 (+local)" },
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
   if (!Array.isArray(data)) return [];
   // Skip the first metadata entry
-  const jobs = data.slice(1);
+  // Without id/slug there is no stable identity across scans — skip.
+  const jobs = data.slice(1).filter((j: any) => j.id || j.slug);
 
   return jobs.map((j: any) => ({
-    id: `rok-${j.id || j.slug || Math.random().toString(36).slice(2)}`,
+    id: `rok-${j.id || j.slug}`,
     title: j.position || j.title || "",
     location: j.location || "Worldwide",
     department: Array.isArray(j.tags) ? j.tags.slice(0, 4).join(", ") : "—",
     description: (j.description || "").replace(/<[^>]+>/g, " ").slice(0, 4000),
     url: j.url || (j.id ? `https://remoteok.com/remote-jobs/${j.id}` : ""),
+    apply_url: j.apply_url || undefined,
+    posted_at: toIso(j.epoch ?? j.date),
     company: j.company || "—",
     ats: "remoteok" as const,
     scanned_at: new Date().toISOString(),
