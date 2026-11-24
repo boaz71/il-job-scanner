@@ -3558,6 +3558,22 @@ window.flowSubmitted_ = (btn) => {
 };
 
 // ── Step 8: tracking and follow-up ──
+const FLOW_EVENT_LABEL = {
+  "cv-generated": "קו״ח נוצרו ע״י AI", "cv-edited": "קו״ח נערכו",
+  "letter-generated": "מכתב נוצר ע״י AI", "letter-edited": "מכתב נערך",
+  "approved": "ההגשה אושרה", "approval-reset": "האישור בוטל (מסמך שונה)",
+  "apply-page-opened": "דף ההגשה נפתח", "submitted": "סומן כהוגש",
+  "profile-changed": "הפרופיל הוחלף — המסמכים אופסו",
+};
+function flowEventNote(e) {
+  const known = { "with evidence": "עם ראיה", "no evidence": "ללא ראיה" };
+  if (!e.note || e.type === "approval-reset" || e.type === "profile-changed") return "";
+  if (known[e.note]) return ` · ${known[e.note]}`;
+  const v = e.note.match(/^verification: (\w+)$/);
+  if (v) return ` · משרה: ${{ open: "פתוחה", unknown: "לא אומתה", closed: "סגורה" }[v[1]] || v[1]}`;
+  return ` · ${escapeHtml(e.note)}`;
+}
+
 function flowFollowHtml() {
   const { app, job } = FLOW;
   const t = TRACKED.find(x => x.id === FLOW.jobId);
@@ -3565,7 +3581,7 @@ function flowFollowHtml() {
   const days = t?.applied_at ? Math.floor((Date.now() - new Date(t.applied_at).getTime()) / 86400000) : null;
   const a = escapeAttr(job.id), ti = escapeAttr(job.title), c = escapeAttr(job.company);
   const events = (app?.events || []).slice().reverse().map(e =>
-    `<li><span>${fmtDate(e.at)}</span>${escapeHtml(e.type)}${e.note ? ` · ${escapeHtml(e.note)}` : ""}</li>`).join("");
+    `<li><span>${fmtDate(e.at)}</span>${escapeHtml(FLOW_EVENT_LABEL[e.type] || e.type)}${flowEventNote(e)}</li>`).join("");
   return `
     <ul class="flow-checks">
       <li><span>מעקב</span>${t ? `${statusLabel[t.status] || t.status}${days === 0 ? " · הוגש היום" : days !== null ? ` · ${days} ימים מאז ההגשה` : ""}` : "לא במעקב"}</li>
