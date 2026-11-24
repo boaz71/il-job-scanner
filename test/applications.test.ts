@@ -96,3 +96,13 @@ test("open + submit only after approval; submitted documents are locked", () => 
   assert.throws(() => a.saveDocument(job(), "cv", { markdown: "new", generated: false }, ctxA), /נעולים/);
   assert.throws(() => a.approveApplication("gh-acme-1", open, []), a.FlowError);
 });
+
+test("addEvidence: only after submission; appends to existing evidence", () => {
+  a.saveDocument(job(), "cv", { markdown: "cv", generated: true }, ctxA);
+  assert.throws(() => a.addEvidence("gh-acme-1", "ref"), a.FlowError);
+  a.approveApplication("gh-acme-1", open, []);
+  a.markSubmitted("gh-acme-1", "");
+  assert.equal(a.addEvidence("gh-acme-1", " Ref #1 ").confirmation!.evidence, "Ref #1");
+  assert.equal(a.addEvidence("gh-acme-1", "email: thanks").confirmation!.evidence, "Ref #1\nemail: thanks");
+  assert.throws(() => a.addEvidence("gh-acme-1", "   "), /ריקה/);
+});

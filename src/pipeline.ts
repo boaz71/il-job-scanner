@@ -1,8 +1,14 @@
 // Where each tracked job stands and what to do next — shared by the mentor's
 // context and the tracker cards, so both give the same advice.
-import type { TrackedJob, TrackedStatus } from "./tracker.js";
-import type { ApplicationRecord } from "./applications.js";
-import type { VerifyStatus } from "./verify.js";
+import { readFileSync, existsSync } from "fs";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+import { listTracked, type TrackedJob, type TrackedStatus } from "./tracker.js";
+import { listApplications, type ApplicationRecord } from "./applications.js";
+import { loadStatuses, effectiveStatus, type VerifyStatus } from "./verify.js";
+import type { Job } from "./types.js";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 export type FlowStage = "none" | "cv" | "approved" | "submitted";
 
@@ -88,4 +94,20 @@ export function pipelineForPrompt(items: PipelineItem[], max = 15): string {
   });
   if (active.length > max) lines.push(`- ...ועוד ${active.length - max} משרות`);
   return lines.join("\n");
+}
+
+// Tracked jobs with their flow stage, verification and next step, from the data files.
+export function loadPipeline(): PipelineItem[] {
+  const stored = loadStatuses();
+  // Same source as the web UI: scored jobs, or the raw scan when nothing was scored yet.
+  const scored = resolve(ROOT, "data/scored-jobs.json");
+  const path = existsSync(scored) ? scored : resolve(ROOT, "data/jobs.json");
+  let currentJobs: Job[] = [];
+  try { if (existsSync(path)) currentJobs = JSON.parse(readFileSync(path, "utf-8")); } catch {}
+  const current = new Map(currentJobs.map((j) => [j.id, j]));
+  const apps = new Map(listApplications().map((a) => [a.job_id, a]));
+  return buildPipeline(listTracked(), apps, (t) => {
+    const cur = current.get(t.id);
+    return effectiveStatus(cur ?? t.job, stored[t.id], !!cur).status;
+  });
 }

@@ -7,6 +7,7 @@ import { getActiveProfile } from "./profiles.js";
 import { loadConfig as loadNotif, sendTelegram } from "./notifications.js";
 import { listTracked } from "./tracker.js";
 import { loadStatuses, verifyJobs } from "./verify.js";
+import { deliver, newJobsAlert, sendFollowupReminders } from "./telegram.js";
 import type { ScoredJob, Job } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -118,9 +119,14 @@ export async function runAutoScan(): Promise<{ total: number; new_count: number;
                       notif.min_grade_for_alert === "AB" ? ["A", "B"] : ["A", "B", "C"];
       const alerts = scored.filter((j: any) => j.is_new && allowed.includes(j.grade));
       if (alerts.length) {
-        const msg = formatTelegramAlert(alerts);
-        const r = await sendTelegram(msg, notif);
-        if (r.ok) alerted = alerts.length;
+        if (notif.telegram.interactive) {
+          // With buttons (⭐ / 🚀 / 🙈) — handled by the poller in telegram.ts.
+          await deliver([newJobsAlert(alerts)], notif);
+          alerted = alerts.length;
+        } else {
+          const r = await sendTelegram(formatTelegramAlert(alerts), notif);
+          if (r.ok) alerted = alerts.length;
+        }
       }
     }
   } else {
@@ -128,6 +134,9 @@ export async function runAutoScan(): Promise<{ total: number; new_count: number;
   }
 
   const closedTracked = await recheckTracked(statusBefore);
+  if (loadNotif().telegram?.enabled) {
+    await sendFollowupReminders(listTracked()).catch((e) => console.error("Follow-up reminders failed:", e));
+  }
 
   // Update last run
   const cfg = loadAutomation();

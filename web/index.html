@@ -67,6 +67,7 @@
       <option value="restored">♻️ משוחזרות בלבד</option>
       <option value="open">✅ פתוחות (מאומתות)</option>
       <option value="closed">⛔ נסגרו</option>
+      <option value="hidden">🙈 מוסתרות</option>
     </select>
     <select id="company"><option value="">כל החברות</option></select>
     <select id="location"><option value="">כל המיקומים</option></select>
@@ -447,6 +448,18 @@
         </select>
       </label>
     </div>
+    <div class="form-row">
+      <label>
+        <input type="checkbox" id="tg-interactive" />
+        טלגרם דו-כיווני — כפתורים בהתראות (⭐ / 🚀 / 🙈), אישור הגשה מהטלפון ו-/status
+      </label>
+    </div>
+    <div class="form-row">
+      <label>כתובת הממשק (לא חובה — לקישור "פתח במחשב"):
+        <input type="text" id="tg-appurl" placeholder="http://192.168.1.10:5174" />
+      </label>
+    </div>
+    <div class="muted" id="tg-status" style="font-size:13px"></div>
     <div style="margin-top:12px; display:flex; gap:8px">
       <button class="btn primary" id="tg-save">💾 שמור</button>
       <button class="btn" id="tg-test">🧪 שלח הודעת בדיקה</button>

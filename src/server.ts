@@ -43,9 +43,13 @@ import { getSummary as getCostSummary } from "./costs.js";
 import { getCacheStats, clearCache } from "./cache.js";
 import { loadStatuses, effectiveStatus, verifyJobs } from "./verify.js";
 import { resolveJob } from "./jobLookup.js";
-import { buildPipeline, pipelineForPrompt } from "./pipeline.js";
+import { loadPipeline, pipelineForPrompt } from "./pipeline.js";
+import { startTelegram, telegramStatus } from "./telegram.js";
+import { createTelegramActions } from "./telegramActions.js";
+import { listHidden, unhideJob } from "./hiddenJobs.js";
 import {
-  getApplication, listApplications, saveDocument, approveApplication, markOpened, markSubmitted, FlowError,
+  getApplication, listApplications, saveDocument, approveApplication, markOpened, recordSubmission, FlowError,
+  docContextFor,
 } from "./applications.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -96,22 +100,7 @@ function loadCurrentJobs(): Job[] {
   return JSON.parse(readFileSync(path, "utf-8"));
 }
 
-// Tracked jobs with their flow stage, verification and next step (see pipeline.ts).
-function loadPipeline() {
-  const stored = loadStatuses();
-  const current = new Map(loadCurrentJobs().map((j) => [j.id, j]));
-  const apps = new Map(listApplications().map((a) => [a.job_id, a]));
-  return buildPipeline(listTracked(), apps, (t) => {
-    const cur = current.get(t.id);
-    return effectiveStatus(cur ?? t.job, stored[t.id], !!cur).status;
-  });
-}
-
-// Which profile + base CV generated documents belong to (see applications.ts).
-function docContext(p: StoredProfile): { profileId: string; cvId: string | null } {
-  const idx = Math.min(p.primary_cv_index || 0, Math.max(0, p.cvs.length - 1));
-  return { profileId: p.id, cvId: p.cvs[idx]?.id ?? null };
-}
+const docContext = docContextFor;
 
 // Re-score current raw jobs against a profile and write scored-jobs.json
 function rescoreActive(): number {
@@ -496,19 +485,13 @@ const server = createServer(async (req, res) => {
     if (pathname === "/api/applications/submitted" && method === "POST") {
       const body = await readBody(req);
       const { jobId, evidence } = JSON.parse(body.toString("utf-8"));
-      let application;
       try {
-        application = markSubmitted(jobId, typeof evidence === "string" ? evidence : "");
+        const { application, tracked } = recordSubmission(jobId, typeof evidence === "string" ? evidence : "");
+        return sendJSON(res, 200, { ok: true, application, tracked });
       } catch (e) {
         if (e instanceof FlowError) return sendJSON(res, 409, { error: e.message });
         throw e;
       }
-      // Move to "applied" in the tracker — never backwards from interview/offer/rejected.
-      const t = addTracked(application.job);
-      const tracked = t.status === "interested"
-        ? updateTracked(t.id, { status: "applied", applied_at: application.submission!.submitted_at })
-        : t;
-      return sendJSON(res, 200, { ok: true, application, tracked });
     }
 
     // ── Generation ──
@@ -626,6 +609,18 @@ const server = createServer(async (req, res) => {
       return sendJSON(res, 200, { ok: true, statuses: r, counts });
     }
 
+    if (pathname === "/api/telegram/status" && method === "GET") {
+      return sendJSON(res, 200, telegramStatus());
+    }
+    if (pathname === "/api/hidden" && method === "GET") {
+      return sendJSON(res, 200, { hidden: listHidden() });
+    }
+    if (pathname === "/api/hidden/remove" && method === "POST") {
+      const body = await readBody(req);
+      const { jobId } = JSON.parse(body.toString("utf-8"));
+      return sendJSON(res, 200, { ok: unhideJob(String(jobId)) });
+    }
+
     if (pathname === "/api/pipeline" && method === "GET") {
       return sendJSON(res, 200, { items: loadPipeline() });
     }
@@ -671,7 +666,8 @@ const server = createServer(async (req, res) => {
       const body = await readBody(req);
       const cfg = JSON.parse(body.toString("utf-8"));
       saveNotif(cfg);
-      return sendJSON(res, 200, { ok: true, notifications: loadNotif() });
+      startTelegram(createTelegramActions());   // apply the two-way setting right away
+      return sendJSON(res, 200, { ok: true, notifications: loadNotif(), telegram: telegramStatus() });
     }
     if (pathname === "/api/automation/test-telegram" && method === "POST") {
       const r = await sendTelegram("✅ <b>IL Job Scanner</b>\nהבדיקה עברה — ההתראות מוכנות.");
@@ -1446,6 +1442,7 @@ ${c.tips.split(". ").map((t: string) => `- ${t.trim()}`).filter((t: string) => t
 
 autoMigrate();
 rescheduleAutomation();
+startTelegram(createTelegramActions());
 
 server.listen(PORT, () => {
   console.log(`\n🌐  http://localhost:${PORT}`);

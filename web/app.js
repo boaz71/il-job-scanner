@@ -7,6 +7,7 @@ let TRACKED = [];
 let TRACKED_IDS = new Set();
 let VERIFY = {};   // jobId → verification (see src/verify.ts)
 let PIPELINE = {}; // jobId → { stage, next_step, ... } for tracked jobs (see src/pipeline.ts)
+let HIDDEN = {};   // jobId → hidden_at — marked "not relevant" from Telegram
 
 async function loadPipeline() {
   try { PIPELINE = Object.fromEntries((await api("/api/pipeline")).items.map(i => [i.id, i])); }
@@ -269,9 +270,19 @@ async function loadJobs() {
   } catch { JOBS = []; }
   await loadTrackedIds();
   await loadVerifyStatus();
+  try { HIDDEN = (await api("/api/hidden")).hidden || {}; } catch { HIDDEN = {}; }
   initJobFilters();
   renderJobs();
 }
+
+window.unhideJob = async (id) => {
+  try {
+    await api("/api/hidden/remove", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId: id }) });
+    delete HIDDEN[id];
+    renderJobs();
+    toast("👁 המשרה חזרה לרשימה");
+  } catch (e) { toast("❌ " + e.message, true); }
+};
 
 // ═══════════════ Job verification ═══════════════
 async function loadVerifyStatus() {
@@ -378,6 +389,7 @@ function renderJobs() {
     if (special === "restored" && !j.is_restored) return false;
     if (special === "open" && VERIFY[j.id]?.status !== "open") return false;
     if (special === "closed" && VERIFY[j.id]?.status !== "closed") return false;
+    if ((special === "hidden") !== !!HIDDEN[j.id]) return false;
     if (company && j.company !== company) return false;
     if (location && j.location !== location) return false;
     return true;
@@ -394,6 +406,8 @@ function renderJobs() {
   if (restoredCount) statsText += ` · ${restoredCount} משוחזרות ♻️`;
   const closedCount = JOBS.filter(j => VERIFY[j.id]?.status === "closed").length;
   if (closedCount) statsText += ` · ${closedCount} נסגרו ⛔`;
+  const hiddenCount = JOBS.filter(j => HIDDEN[j.id]).length;
+  if (hiddenCount) statsText += ` · ${hiddenCount} מוסתרות 🙈`;
   document.getElementById("jobs-stats").textContent = statsText;
 
   const list = document.getElementById("jobs-list");
@@ -417,6 +431,7 @@ function renderJobs() {
     const restoredBadge = j.is_restored ? `<span class="restored-badge">♻️ משוחזר</span>` : "";
     const actions = hasProfile ? `
       <div class="job-actions">
+        ${HIDDEN[j.id] ? `<button class="btn small" onclick="unhideJob('${escapeAttr(j.id)}')">👁 החזר לרשימה</button>` : ""}
         <button class="btn small primary" onclick="openFlow('${escapeAttr(j.id)}')" title="אימות, קו״ח, מכתב, אישור והגשה — שלב אחר שלב">🚀 הגשה</button>
         <button class="btn small ${tracked ? 'track-btn tracked' : 'track-btn'}" onclick="toggleTrack('${escapeAttr(j.id)}')">${tracked ? '⭐ במעקב' : '☆ עקוב'}</button>
         <label class="compare-check" title="בחר להשוואה"><input type="checkbox" class="compare-cb" data-id="${escapeAttr(j.id)}" onchange="updateCompareBar()" /> ⚖️</label>
@@ -1361,6 +1376,9 @@ async function loadAutomationPage() {
     document.getElementById("tg-chat").value = n.telegram?.chat_id || "";
     document.getElementById("tg-enabled").checked = !!n.telegram?.enabled;
     document.getElementById("tg-grade").value = n.min_grade_for_alert || "A";
+    document.getElementById("tg-interactive").checked = !!n.telegram?.interactive;
+    document.getElementById("tg-appurl").value = n.app_url || "";
+    renderTelegramStatus(await api("/api/telegram/status").catch(() => null));
   } catch (e) { toast("❌ " + e.message, true); }
 }
 
@@ -1399,13 +1417,23 @@ document.getElementById("tg-save").addEventListener("click", async () => {
           bot_token: document.getElementById("tg-token").value.trim(),
           chat_id: document.getElementById("tg-chat").value.trim(),
           enabled: document.getElementById("tg-enabled").checked,
+          interactive: document.getElementById("tg-interactive").checked,
         },
         min_grade_for_alert: document.getElementById("tg-grade").value,
+        app_url: document.getElementById("tg-appurl").value.trim(),
       }),
-    });
+    }).then(r => renderTelegramStatus(r.telegram));
     toast("✅ הגדרות טלגרם שמורות");
   } catch (e) { toast("❌ " + e.message, true); }
 });
+
+function renderTelegramStatus(st) {
+  const el = document.getElementById("tg-status");
+  if (!st) { el.textContent = ""; return; }
+  el.textContent = st.state === "running"
+    ? `🟢 מאזין לטלגרם${st.last_ok_at ? ` · בדיקה אחרונה ${fmtAgo(st.last_ok_at)}` : ""}`
+    : st.state === "error" ? `🔴 שגיאה: ${st.error}` : "⚪ דו-כיווני כבוי";
+}
 
 document.getElementById("tg-test").addEventListener("click", async () => {
   try {
@@ -3607,4 +3635,10 @@ window.flowToTracker = () => {
   await loadProfiles();
   await loadJobs();
   loadProfilePage();
+  // Deep link from Telegram: #flow=<jobId> opens the submission flow
+  const m = location.hash.match(/^#flow=(.+)$/);
+  if (m) {
+    history.replaceState(null, "", location.pathname);
+    openFlow(decodeURIComponent(m[1]));
+  }
 })();

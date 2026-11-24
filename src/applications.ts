@@ -7,6 +7,8 @@ import { fileURLToPath } from "url";
 import { createHash } from "crypto";
 import type { Job } from "./types.js";
 import type { JobVerification } from "./verify.js";
+import type { StoredProfile } from "./profiles.js";
+import { addTracked, updateTracked, type TrackedJob } from "./tracker.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -158,4 +160,35 @@ export function markSubmitted(jobId: string, evidence: string): ApplicationRecor
   if (ev) rec.confirmation = { at: now, evidence: ev };
   rec.events.push({ at: now, type: "submitted", note: ev ? "with evidence" : "no evidence" });
   return saveApplication(rec);
+}
+
+// Mark submitted and move the job to "applied" in the tracker — never backwards
+// from interview/offer/rejected. Shared by the web UI and Telegram.
+export function recordSubmission(jobId: string, evidence: string): { application: ApplicationRecord; tracked: TrackedJob | null } {
+  const application = markSubmitted(jobId, evidence);
+  const t = addTracked(application.job);
+  const tracked = t.status === "interested"
+    ? updateTracked(t.id, { status: "applied", applied_at: application.submission!.submitted_at })
+    : t;
+  return { application, tracked };
+}
+
+// Attach evidence (reference number, confirmation email) after submitting.
+export function addEvidence(jobId: string, evidence: string): ApplicationRecord {
+  const rec = getApplication(jobId);
+  if (!rec?.submission?.submitted_at) throw new FlowError("המועמדות עוד לא סומנה כהוגשה");
+  const ev = evidence.trim().slice(0, 4000);
+  if (!ev) throw new FlowError("הראיה ריקה");
+  const now = new Date().toISOString();
+  rec.confirmation = rec.confirmation
+    ? { at: rec.confirmation.at, evidence: `${rec.confirmation.evidence}\n${ev}`.slice(0, 4000) }
+    : { at: now, evidence: ev };
+  rec.events.push({ at: now, type: "evidence-added" });
+  return saveApplication(rec);
+}
+
+// Which profile + base CV generated documents belong to.
+export function docContextFor(p: StoredProfile): { profileId: string; cvId: string | null } {
+  const idx = Math.min(p.primary_cv_index || 0, Math.max(0, p.cvs.length - 1));
+  return { profileId: p.id, cvId: p.cvs[idx]?.id ?? null };
 }
